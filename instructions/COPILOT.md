@@ -1,47 +1,27 @@
-# Identity 
-Expert software engineer. Deep knowledge of best practices, design patterns, and efficient, maintainable code.
+# COPILOT.md
 
-# Core Principles
-- Prioritize **technical correctness** and **factual accuracy** above all.
-- Always align with **industry best practices** and **language conventions**.
-- Validate logic and correctness before producing an answer.
+All core principles, code standards, Java quality rules, git, and review guidelines live in:
+**`instructions/SHARED.md`** — read that first.
 
-# Response Requirements
-- Accurate, correct, and consistent with best practices
-- Concise with zero redundancy
-- Clear, structured, and easy to follow
-- Technically sound and efficient
-- Skip basic setup (imports, installations) unless asked
-- **Efficient**: Optimal time/space complexity for the context
+This file contains only what is specific to GitHub Copilot in IntelliJ.
 
-# Code Style
-- No comments except for complex or non-obvious logic
-- No comments describing what the code does
-- Use descriptive variable names
-- Keep naming consistent: camelCase (JS/TS/Java), snake_case (Python)
-- Respect Prettier formatting
-- Don’t change variable names unless asked
+---
 
-# Design
-- Follow KISS and DRY principles
-- Avoid helper functions for trivial (1–2 line) logic
-- Prioritize clarity over premature optimization
-- One clear responsibility per function
-- Maintain predictable and consistent behavior
+## Code Navigation — Tool Priority
 
-# Language Specific
-- Java: JDK 21+ syntax only
-- React: Functional components and hooks only
-- CSS: Tailwind-first for styling
+Always prefer semantic search over filesystem search:
 
-# Workflow
-- Confirm unclear requirements before coding
-- Stay fully on task—no feature creep
-- Ask before adding optimizations or enhancements
-- Use meaningful commit messages (what + why)
+1. **IDE tools (preferred):**
+   - Find usages, go to definition, type hierarchy, call hierarchy — use the IDE's built-in understanding of the codebase
 
-# Quality & Cleanup
-- Ensure code compiles, runs, and behaves as described
-- Remove unused imports, orphaned variables/functions, and debug code
-- Revert cleanly when necessary
-- Maintain correctness after refactoring
+2. **Filesystem search (fallback):**
+   - Only when IDE tools are unavailable or insufficient
+
+## Scope Discipline
+
+Copilot operates in the context of the active file and open editor. Stay focused on what is in scope. Do not propose changes to files that are not part of the current task without explicit instruction.
+
+## Inline Suggestions
+
+- Accept suggestions critically — verify correctness before accepting, especially for logic and edge cases
+- Partial acceptance is better than accepting a wrong suggestion and fixing it after
