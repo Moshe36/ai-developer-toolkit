@@ -130,20 +130,20 @@ If the maintained JSON already uses a project-specific shape, keep that shape. D
 
 When a repository already documents its maintained overview contract, treat those repo rules as hard requirements, not suggestions.
 
-For the LRADS-style maintained pattern, preserve these invariants:
+General invariants to preserve:
 
 - the canonical maintained sources are the architecture JSON and the readable overview SVG referenced by that JSON
 - older overview SVGs, alternate diagrams, or generated intermediates are not authoritative once the maintained contract exists
 - do not recreate the maintained overview from Mermaid or another alternate DSL when the repo contract forbids it
-- preserve and refresh top-level JSON metadata such as `project.scope`, `project.sourceMode`, `project.generatedAt`, and `project.referenceSvg`
-- preserve the maintained JSON schema exactly when it already exists; do not reshape `project -> features -> nodes/links/gaps` into another generic model
-- `verificationNote` is evidence-backed source material in the JSON; the SVG note card should be a condensed rendering of that evidence, not newly invented prose
-- `features[].order` drives panel ordering and badge numbering such as `FEATURE 01`, `FEATURE 02`, and so on
-- `panelHeight` is structural layout data; if it changes, keep feature card height, downstream `translate(...)` offsets, and total page height synchronized
-- shared services, repos, or mappers may intentionally appear in multiple feature panels; do not deduplicate them into a single abstract global graph unless the maintained contract already does so
-- `gaps[]` may need to stay itemized as explicit gap boxes or labels, especially for schema-only declarations; do not collapse them into a generic paragraph note
-- preserve the legend exactly as maintained unless the data proves a targeted legend update is required
-- reuse the maintained SVG class taxonomy and style tokens exactly when they already exist, for example `panel`, `note`, `gapBox`, `link`, `softLink`, `dashLink`, `ctrl`, `svc`, `repo`, `ext`, and `map`
+- preserve and refresh top-level JSON metadata defined by the project's schema
+- preserve the maintained JSON schema exactly when it already exists; do not reshape existing structures into a different generic model
+- `verificationNote` fields are evidence-backed source material; the SVG note card should be a condensed rendering of that evidence, not newly invented prose
+- feature order fields drive panel ordering and badge numbering
+- layout height metadata is structural; if it changes, keep downstream `translate(...)` offsets and total page height synchronized
+- shared services, repos, or mappers may intentionally appear in multiple feature panels; do not deduplicate them unless the maintained contract already does so
+- gap items may need to stay itemized as explicit gap boxes; do not collapse them into a generic paragraph note
+- preserve the legend exactly as maintained unless the data proves a targeted update is required
+- reuse the maintained SVG class taxonomy and style tokens exactly when they already exist
 
 ### Feature-Based Maintained Shape
 
@@ -206,7 +206,7 @@ Common link styles:
 
 If the maintained readable SVG already establishes a style system, treat that style as part of the maintained architecture contract.
 
-For the reference backend overview style, preserve these exact characteristics:
+For the maintained readable overview style, preserve these exact characteristics:
 
 - light page background, including page-level fill or gradient rather than a dark canvas
 - one large vertically stacked SVG containing multiple feature panels
@@ -224,14 +224,7 @@ For the reference backend overview style, preserve these exact characteristics:
 
 The goal is not to create a "similar" SVG. The goal is to update the maintained SVG in the exact same design language.
 
-For the LRADS-style readable overview specifically, also preserve these exact semantics:
-
-- `verificationNote` in JSON maps to the right-side note card text in the readable SVG
-- `features[].summary` maps to the per-panel summary line under the feature title
-- `features[].order` maps to both vertical panel order and the `FEATURE 0N` badge text
-- `features[].gaps` map to explicit gap boxes when that panel already uses them
-- repeated shared nodes across feature panels are valid and should remain repeated when the maintained SVG already presents them that way
-- if a feature's content change affects height, update the card height, subsequent `translate(...)` values, and outer page height together rather than leaving geometry partially stale
+When a project's maintained SVG uses a verification note card, feature summary lines, ordered feature badges, explicit gap boxes, and repeated shared nodes across panels, preserve all of those semantics. If a feature's content change affects height, update the card height, subsequent `translate(...)` values, and outer page height together rather than leaving geometry partially stale.
 
 ### Project-Specific Supporting SVGs
 
@@ -286,8 +279,6 @@ Bad output:
 ## Recommended Output Shape
 
 Prefer the maintained project shape.
-
-For a maintained contract like LRADS, that means preserving the existing feature-based schema rather than introducing a different generic structure.
 
 If no maintained shape exists yet, a feature-based shape is often a strong default for backend overviews that need readable detail. A good structure is:
 
