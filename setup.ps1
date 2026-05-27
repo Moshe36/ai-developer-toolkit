@@ -20,6 +20,8 @@ $links = @(
     @{ link = "$userHome\.claude\hooks";              target = "$repo\hooks";                                     type = "dir"  },
     # OpenCode global rules
     @{ link = "$userHome\.config\opencode\AGENTS.md"; target = "$repo\instructions\SHARED.md";                    type = "file" },
+    # Codex CLI global rules
+    @{ link = "$userHome\.codex\AGENTS.md";           target = "$repo\instructions\SHARED.md";                    type = "file" },
     # Copilot IntelliJ
     @{ link = "$copilotDir\global-copilot-instructions.md";    target = "$repo\instructions\COPILOT.md";          type = "file" },
     @{ link = "$copilotDir\global-agents-instructions.md";     target = "$repo\instructions\SHARED.md";           type = "file" },
