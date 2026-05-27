@@ -1,0 +1,8 @@
+{
+  "servers" : {
+    "Azure MCP Server IntelliJ" : {
+      "command" : "C:\\Users\\moshemoa\\AppData\\Roaming\\JetBrains\\IntelliJIdea2025.2\\plugins\\azure-toolkit-for-intellij\\azmcp\\azmcp_package_0.5.8\\package\\dist\\azmcp.exe",
+      "args" : [ "server", "start" ]
+    }
+  }
+}
