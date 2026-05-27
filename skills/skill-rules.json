@@ -1,0 +1,211 @@
+{
+    "version": "1.0",
+    "description": "Skill activation triggers for Claude Code. Optimized for performance with minimal false positives.",
+    "skills": {
+        "skill-developer": {
+            "type": "domain",
+            "enforcement": "suggest",
+            "priority": "high",
+            "description": "Meta-skill for creating and managing Claude Code skills",
+            "promptTriggers": {
+                "keywords": [
+                    "create skill",
+                    "skill rules",
+                    "hook system",
+                    "skill-rules.json"
+                ],
+                "intentPatterns": [
+                    "(create|modify|build).*?skill",
+                    "skill.*(trigger|activate|system)"
+                ]
+            }
+        },
+        "backend-dev-guidelines": {
+            "type": "domain",
+            "enforcement": "suggest",
+            "priority": "high",
+            "description": "Backend development patterns for Java 21, Spring Boot 3.x, GraphQL, REST APIs",
+            "promptTriggers": {
+                "keywords": [
+                    "spring boot",
+                    "controller",
+                    "graphql",
+                    "mapstruct",
+                    "repository"
+                ],
+                "intentPatterns": [
+                    "(create|implement).*(controller|service|repository|endpoint|API)",
+                    "(add|implement).*(validation|caching|async)",
+                    "spring.*(bean|cache|security)"
+                ]
+            },
+            "fileTriggers": {
+                "pathPatterns": [
+                    "**/src/main/java/**/*.java",
+                    "**/src/main/resources/**/*.yml",
+                    "**/src/main/resources/graphql/**/*.graphqls"
+                ],
+                "pathExclusions": [
+                    "**/src/test/**/*.java",
+                    "**/*Test.java"
+                ],
+                "contentPatterns": [
+                    "@Service",
+                    "@Controller",
+                    "@RestController",
+                    "@Repository",
+                    "@QueryMapping",
+                    "@MutationMapping",
+                    "@Mapper.*componentModel"
+                ]
+            }
+        },
+        "frontend-dev-guidelines": {
+            "type": "domain",
+            "enforcement": "suggest",
+            "priority": "high",
+            "description": "React/TypeScript best practices with Apollo Client, Redux Toolkit, Tailwind CSS",
+            "promptTriggers": {
+                "keywords": [
+                    "component",
+                    "apollo",
+                    "redux slice",
+                    "shadcn",
+                    "react hook form"
+                ],
+                "intentPatterns": [
+                    "(create|add|build).*(component|feature|UI|page)",
+                    "(apollo|graphql).*(query|mutation)",
+                    "redux.*(slice|selector)",
+                    "tailwind.*style"
+                ]
+            },
+            "fileTriggers": {
+                "pathPatterns": [
+                    "frontend/src/**/*.tsx",
+                    "src/**/*.tsx",
+                    "src/features/**/*.ts",
+                    "src/redux/**/*.ts"
+                ],
+                "pathExclusions": [
+                    "**/*.test.tsx",
+                    "**/*.test.ts",
+                    "**/generatedTypes/**"
+                ],
+                "contentPatterns": [
+                    "from '@apollo/client'",
+                    "useQuery",
+                    "useMutation",
+                    "createSlice",
+                    "useAppSelector",
+                    "from '@/components/ui",
+                    "useForm"
+                ]
+            },
+            "skipConditions": {
+                "sessionSkillUsed": true,
+                "fileMarkers": [
+                    "@skip-validation"
+                ]
+            }
+        },
+        "error-tracking": {
+            "type": "domain",
+            "enforcement": "suggest",
+            "priority": "high",
+            "description": "Sentry error tracking for frontend and backend services",
+            "promptTriggers": {
+                "keywords": [
+                    "error handling",
+                    "sentry",
+                    "captureException",
+                    "error boundary",
+                    "apollo error"
+                ],
+                "intentPatterns": [
+                    "(add|implement).*(error handling|sentry|error tracking)",
+                    "(fix|handle|catch).*(error|exception)",
+                    "(apollo|graphql).*(error|handling)"
+                ]
+            },
+            "fileTriggers": {
+                "pathPatterns": [
+                    "**/instrument.ts",
+                    "**/sentry*.ts",
+                    "**/*Controller.ts",
+                    "**/*Service.ts",
+                    "**/ErrorBoundary.tsx",
+                    "**/apollo/client.ts"
+                ],
+                "contentPatterns": [
+                    "@sentry",
+                    "Sentry\\.",
+                    "captureException",
+                    "ErrorBoundary",
+                    "onError.*from.*@apollo"
+                ]
+            }
+        },
+        "mapping-project-overview": {
+            "type": "domain",
+            "enforcement": "suggest",
+            "priority": "high",
+            "description": "Backend architecture overview mapping from code or maintained architecture JSON into readable manual SVG artifacts",
+            "promptTriggers": {
+                "keywords": [
+                    "architecture overview",
+                    "project overview",
+                    "svg diagram",
+                    "feature panel",
+                    "architecture json"
+                ],
+                "intentPatterns": [
+                    "(create|build|generate|refresh|update).*(architecture|project).*(overview|diagram|svg)",
+                    "(map|document).*(backend|service|repository).*(architecture|relationships)",
+                    "(maintain|update).*(architecture json|overview svg|feature panel)"
+                ]
+            },
+            "fileTriggers": {
+                "pathPatterns": [
+                    "**/docs/architecture/**/*.json",
+                    "**/docs/architecture/**/*.svg",
+                    "**/APP_ARCHITECTURE_DIAGRAM.md",
+                    "**/src/main/java/**/*.java",
+                    "**/src/main/resources/graphql/**/*.graphqls"
+                ],
+                "pathExclusions": [
+                    "**/target/**",
+                    "**/src/test/**/*.java",
+                    "**/*Test.java"
+                ],
+                "contentPatterns": [
+                    "@QueryMapping",
+                    "@MutationMapping",
+                    "@Service",
+                    "@Repository",
+                    "<svg",
+                    "\\\"features\\\"\\s*:",
+                    "GraphQL schema"
+                ]
+            }
+        }
+    },
+    "notes": {
+        "enforcement_types": {
+            "suggest": "Skill suggestion appears but doesn't block execution",
+            "block": "Requires skill to be used before proceeding (guardrail)",
+            "warn": "Shows warning but allows proceeding"
+        },
+        "priority_levels": {
+            "critical": "Highest - Always trigger when matched",
+            "high": "Important - Trigger for most matches",
+            "medium": "Moderate - Trigger for clear matches",
+            "low": "Optional - Trigger only for explicit matches"
+        },
+        "optimization": {
+            "keywords": "Use 5-7 high-signal keywords only",
+            "intentPatterns": "Regex patterns catch variations",
+            "performance": "Reduced from 30+ keywords to ~5 per skill for faster matching"
+        }
+    }
+}

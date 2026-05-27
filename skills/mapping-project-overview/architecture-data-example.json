@@ -1,0 +1,18 @@
+{
+  "id": "authentication",
+  "label": "Authentication",
+  "summary": "GraphQL login and logout, role lookup, JWT issuance, and token revocation.",
+  "verificationNote": [
+    "login maps payload with FrontedMapper",
+    "logout revokes token in JwtService"
+  ],
+  "nodes": [
+    { "id": "auth-controller", "type": "controller", "label": "AuthController" },
+    { "id": "auth-service", "type": "service", "label": "AuthService" },
+    { "id": "role-repository", "type": "repo", "label": "RoleRepository" }
+  ],
+  "links": [
+    { "from": "auth-controller", "to": "auth-service", "style": "link" },
+    { "from": "auth-service", "to": "role-repository", "style": "link" }
+  ]
+}

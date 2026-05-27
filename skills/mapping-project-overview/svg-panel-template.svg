@@ -1,0 +1,13 @@
+<g transform="translate(40,130)">
+    <rect width="1360" height="320" rx="20" class="panel" filter="url(#shadow)"/>
+    <text x="28" y="32" class="badge">FEATURE 01</text>
+    <text x="28" y="58" class="sectionTitle">Feature Title</text>
+    <text x="28" y="80" class="sectionMeta">One-sentence feature summary.</text>
+
+    <rect x="1038" y="24" width="286" height="96" rx="12" class="note"/>
+    <text x="1054" y="46" class="noteTitle">Verified now</text>
+    <text x="1054" y="64" class="noteText">Verification note line 1</text>
+
+    <rect x="34" y="126" width="188" height="58" rx="8" class="ctrl"/>
+    <text x="128" y="148" text-anchor="middle" class="boxTitle ctrlText">ControllerName</text>
+</g>

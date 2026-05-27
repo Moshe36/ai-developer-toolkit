@@ -1,0 +1,22 @@
+# Node
+hooks/node_modules/
+hooks/package-lock.json
+
+# Runtime / cache
+*.jsonl
+stats-cache.json
+tsc-cache/
+
+# Credentials
+.credentials.json
+session-env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.suo
+*.user
