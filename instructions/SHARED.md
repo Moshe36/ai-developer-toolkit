@@ -110,6 +110,8 @@ If any answer is no, refactor before presenting.
 4. Remove debug artifacts
 5. Commit atomically
 
+**Do not create files or commit unless explicitly asked.** Never create new files (including docs, READMEs, configs) as a side effect of a task. Never stage, commit, or push unless the user requests it.
+
 ---
 
 ## Git Commits
