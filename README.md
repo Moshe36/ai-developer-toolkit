@@ -52,6 +52,7 @@ No re-run needed. Tools read through the symlinks, so a pull is instantly live.
 |---|---|
 | **Claude Code** | `~/.claude/CLAUDE.md`, `skills/`, `agents/`, `commands/`, `hooks/` |
 | **OpenCode** | `~/.config/opencode/AGENTS.md` (also reads `~/.claude/` natively as fallback) |
+| **Codex CLI** | `~/.codex/AGENTS.md` |
 | **Copilot IntelliJ** | `global-copilot-instructions.md`, `global-agents-instructions.md`, `global-git-commit-instructions.md` |
 
 ---
