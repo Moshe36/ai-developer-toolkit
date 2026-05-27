@@ -190,6 +190,44 @@
             }
         }
     },
+        "grill-me": {
+            "type": "domain",
+            "enforcement": "suggest",
+            "priority": "high",
+            "description": "Interview the user relentlessly to stress-test plans and designs",
+            "promptTriggers": {
+                "keywords": [
+                    "grill me",
+                    "stress-test",
+                    "poke holes",
+                    "stress test my"
+                ],
+                "intentPatterns": [
+                    "grill.*(me|this|plan|design|idea)",
+                    "(stress[- ]test|challenge|question).*(plan|design|approach|idea)",
+                    "(review|validate|sanity.check).*(design|plan|approach)"
+                ]
+            }
+        },
+        "writing-clearly-and-concisely": {
+            "type": "domain",
+            "enforcement": "suggest",
+            "priority": "medium",
+            "description": "Apply Strunk's Elements of Style rules to documentation and prose",
+            "promptTriggers": {
+                "keywords": [
+                    "write documentation",
+                    "improve writing",
+                    "write readme",
+                    "write docs"
+                ],
+                "intentPatterns": [
+                    "(write|improve|edit|review).*(doc|readme|documentation|prose|text|copy|message)",
+                    "(clear|concise|better).*(writing|prose|docs|documentation)"
+                ]
+            }
+        }
+    },
     "notes": {
         "enforcement_types": {
             "suggest": "Skill suggestion appears but doesn't block execution",
