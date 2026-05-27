@@ -188,8 +188,7 @@
                     "GraphQL schema"
                 ]
             }
-        }
-    },
+        },
         "grill-me": {
             "type": "domain",
             "enforcement": "suggest",
@@ -206,6 +205,24 @@
                     "grill.*(me|this|plan|design|idea)",
                     "(stress[- ]test|challenge|question).*(plan|design|approach|idea)",
                     "(review|validate|sanity.check).*(design|plan|approach)"
+                ]
+            }
+        },
+        "grill-with-docs": {
+            "type": "domain",
+            "enforcement": "suggest",
+            "priority": "high",
+            "description": "Grill session that challenges plan against existing domain model and updates CONTEXT.md/ADRs inline",
+            "promptTriggers": {
+                "keywords": [
+                    "grill with docs",
+                    "domain model",
+                    "context map",
+                    "CONTEXT.md"
+                ],
+                "intentPatterns": [
+                    "grill.*(docs|domain|context|model)",
+                    "(challenge|stress.test).*(domain|glossary|model|terminology)"
                 ]
             }
         },
