@@ -496,6 +496,45 @@ Add more columns by continuing the formula. The diagram width grows with partici
 
 ---
 
+## Working Vertically — One Diagram at a Time
+
+When a plan requires multiple diagrams, never generate all of them in a single pass. A full JSON payload for even one diagram is large; generating several in sequence exhausts context and degrades quality.
+
+### Preferred approach: parallel sub-agents
+
+Dispatch one sub-agent per diagram. Each agent receives:
+- The relevant feature description
+- The participant list for that diagram
+- The flows it must include (from the "One Diagram or Many?" decision)
+
+Sub-agents work simultaneously and return their JSON independently. This is the fastest path and keeps each agent's context focused on a single diagram.
+
+### Fallback: sequential flush
+
+If sub-agents are not available, generate and **fully output** one diagram before starting the next:
+
+1. Decide all diagrams upfront — list them by name before writing any JSON
+2. Generate diagram 1 completely — write the full `.excalidraw` JSON to file
+3. Confirm diagram 1 is written and correct
+4. Move to diagram 2 — repeat
+
+**Never hold two diagrams in context at once.** Complete and flush each file before the next one begins.
+
+### Planning step (always first)
+
+Before writing any JSON, output a diagram plan:
+
+```
+Diagrams to generate:
+1. <FeatureName> — participants: CLIENT, AuthFilter, ..., Repo — flows: Mutation, Error
+2. <FeatureName> — participants: Scheduler, Service, ..., Device — flows: App start, Periodically, Error
+...
+```
+
+This makes the scope visible, lets the user correct the plan before any JSON is written, and gives sub-agents a clear brief.
+
+---
+
 ## Common Mistakes
 
 | Mistake | Fix |
