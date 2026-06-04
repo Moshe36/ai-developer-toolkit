@@ -97,8 +97,21 @@ If any answer is no, refactor before presenting.
 1. Read the relevant code before forming an opinion
 2. Identify all unresolved questions
 3. Resolve them — ask the user if needed, one question at a time
-4. Only then write code
-5. Document significant decisions and their rationale
+4. Break work into vertical slices (see below)
+5. Only then write code
+6. Document significant decisions and their rationale
+
+### Vertical Slices — Not Horizontal Layers
+
+When designing or implementing a feature, always work in **vertical slices**: thin end-to-end paths through every integration layer (schema, API, service, UI, tests). Never work in horizontal slices (e.g. "build all the DTOs", then "build all the services", then "build the UI").
+
+- Each slice delivers a narrow but **complete** path — demoable or verifiable on its own
+- A slice touches every layer it needs, but only the minimum within each layer
+- Prefer many thin slices over few thick ones — each slice is a feedback checkpoint
+- Earlier slices prove the integration works; later slices widen the functionality
+- If a slice cannot be verified without another slice, it is too thin or the wrong cut
+
+**Why:** Horizontal work delays integration feedback to the end, where surprises are expensive. Vertical slices surface integration problems immediately and keep the system in a working state after every step.
 
 ---
 
