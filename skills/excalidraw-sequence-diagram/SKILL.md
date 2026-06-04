@@ -409,6 +409,41 @@ Use this checklist for every new feature diagram:
 
 ---
 
+## One Diagram or Many?
+
+When a plan covers multiple operations, decide up front how many diagrams to produce.
+
+### Split into separate diagrams when:
+- Two operations involve a **meaningfully different set of components** (e.g. Create touches `fileService` and `OpStateService`; Delete does not — different lifeline sets → different diagrams)
+- Two operations follow **different flow structures** (e.g. one is fire-and-forget, the other is async with polling)
+- A single diagram would become too wide or too tall to read comfortably
+
+### Consolidate into one diagram when:
+- Two or more operations are **structurally identical** — same participants, same flow shape, same block sequence — and differ only in the operation name or the specific field/entity being acted on
+- In that case, name the operation generically (e.g. `XOperation`, `updateField`) and list the concrete operations it represents in the diagram title
+
+**Title format for consolidated diagrams:**
+```
+XOperation  (covers: createX, updateX, patchX)
+```
+
+Place this title as a large text element (`fontSize: 24–28`) above the lifeline headers.
+
+### Decision rule in plain terms:
+> If you would have to draw different arrows or different lifelines, draw separate diagrams.  
+> If you would only have to change a label, consolidate into one.
+
+### Examples:
+
+| Scenario | Decision |
+|---|---|
+| Create mission vs Delete mission — Create saves a file, Delete does not | **Two diagrams** |
+| Set radio frequency vs Set radio power — both go CLIENT → AuthFilter → Controller → Service → RadioDevice → Repo, same shape | **One diagram** — name it `updateRadioParameter` |
+| Fetch station status vs Fetch mission status — different Repos, different external devices | **Two diagrams** |
+| Enable TCG vs Disable TCG — same components, inverse command value | **One diagram** — name it `setTcgState (covers: enable, disable)` |
+
+---
+
 ## Canonical Block Order
 
 Every diagram follows this fixed top-to-bottom block sequence. Each block is one flow group container.
