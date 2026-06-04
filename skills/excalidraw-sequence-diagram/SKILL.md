@@ -11,21 +11,151 @@ This skill documents the exact Excalidraw JSON structure and visual conventions 
 
 ---
 
+## MANDATORY FIELD VALUES
+
+These fields have caused incorrect output. They are not optional — every element must use exactly these values:
+
+| Field | Correct value | Wrong value (never use) |
+|---|---|---|
+| `fillStyle` | `"solid"` | `"hachure"` |
+| `strokeWidth` on arrows | `2` | `1` |
+| `strokeWidth` on flow group containers | `1` | any other |
+| `strokeWidth` on lifeline bars | `2` | `1` |
+| `roughness` | `1` | any other |
+| `fontFamily` | `5` | any other |
+| `opacity` | `100` | any other |
+| `angle` | `0` | any other |
+| `elbowed` on regular arrows | `false` | `true` |
+| `elbowed` on self-loop arrows | `true` | `false` |
+
+---
+
+## CANONICAL BLOCK ORDER — ENFORCED
+
+Blocks must always appear in this exact top-to-bottom sequence. Never reorder. Never put Error above Mutation. Never put Periodically above Mutation.
+
+```
+1. On App start       (orange #f08c00)   — only if feature registers scheduled tasks
+2. Mutation / Update  (orange or green)  — only if feature has user-triggered writes
+3. Periodically flow  (blue #1971c2)     — only if feature polls an external device
+4. Error flow         (red #e03131)      — always last, always present if any error paths exist
+```
+
+Skip a block entirely if it does not apply. The remaining blocks still follow this order.
+
+---
+
 ## Coordinate System
 
 - Origin is top-left. Positive x goes right, positive y goes down.
 - **Lifelines are spaced ~190px apart** horizontally.
-- **Messages (rows) are spaced ~40px apart** vertically.
-- Each new flow group starts ~40px below the previous one.
+- **Messages (rows) are spaced ~40px apart** vertically within a block.
+- **Gap between blocks: 80px minimum.** If a block contains long arrow labels or multi-line text, increase to 100px. Never place the next block's first arrow closer than 80px below the previous block's last arrow — the label above the arrow needs room.
+- Each flow group container starts 40px above its first arrow row (space for the group label).
 - Left edge of diagram: x ≈ -220. Diagram width scales with participant count — use the x position formula; there is no fixed right boundary.
+
+### Vertical Spacing Budget Per Block
+
+```
+group_start_y  = previous_group_end_y + 80          // 80px gap between blocks
+first_row_y    = group_start_y + 40                  // 40px for the group label
+next_row_y     = previous_row_y + 40                 // 40px per message row
+group_end_y    = last_row_y + 20                     // 20px padding at bottom
+group_height   = group_end_y - group_start_y
+```
+
+If any arrow label wraps to multiple lines, add 20px extra to that row's spacing and expand `group_height` accordingly.
+
+---
+
+## Element Array Order (Z-Order)
+
+Excalidraw uses **two** mechanisms for render order — both must be correct:
+
+1. **Array position**: elements later in the `elements` array render on top.
+2. **`index` field**: a fractional-index string (`"a0"`, `"a1"`, `"b0"`…) that also controls z-order. Higher string value = rendered on top.
+
+Lifeline bars have a solid `#e9ecef` fill. Any arrow with a lower `index` than a bar will be painted over and become invisible — only appearing after a double-click.
+
+**Required array order AND index order:**
+
+```
+Position  index range   Elements
+────────  ───────────   ─────────────────────────────────────────────
+1–2       a0–a1         Diagram title + description texts
+3–N       a2–aN         Lifeline label texts  (one per participant)
+N+1–M     b0–bM         Lifeline bar rectangles  (one per participant)
+M+1–P     c0–cP         Flow group containers  (dashed rectangles)
+P+1–Q     d0–dQ         Flow group label texts
+Q+1–R     e0–eR         Arrows  (ALL arrows — forward + return)
+R+1–S     f0–fS         Arrow label texts  (containerId-bound)
+S+1–T     g0–gT         Note box rectangles  (if any)
+T+1–U     h0–hU         Note box texts  (if any)
+```
+
+Assign `index` values in strict ascending order following this table. **Arrows must have higher `index` values than all lifeline bars.** Never give an arrow an `index` below `"e0"`.
+
+**Never place arrows before lifeline bars in the array, and never give them a lower `index`.**
 
 ---
 
 ## Element Catalog
 
+> **Every participant requires exactly TWO elements: one Lifeline Bar (rectangle) + one Lifeline Label (text). Generating only the label without the bar is the most common error — the bar is what draws the vertical line. Both must be present.**
+
+### 0. Diagram Title
+
+Every diagram must have a title block above the lifeline headers. It consists of two text elements: a title and a description.
+
+**Title text** (`fontSize: 28`):
+```json
+{
+  "type": "text",
+  "x": -220,
+  "y": <top_of_diagram>,
+  "fontSize": 28,
+  "fontFamily": 5,
+  "strokeColor": "#1e1e1e",
+  "backgroundColor": "transparent",
+  "fillStyle": "solid",
+  "strokeWidth": 1,
+  "strokeStyle": "solid",
+  "roughness": 1,
+  "opacity": 100,
+  "textAlign": "left",
+  "verticalAlign": "top",
+  "containerId": null
+}
+```
+
+**Description text** (`fontSize: 16`, placed 36px below the title):
+```json
+{
+  "type": "text",
+  "x": -220,
+  "y": <title_y + 36>,
+  "fontSize": 16,
+  "fontFamily": 5,
+  "strokeColor": "#868e96",
+  "backgroundColor": "transparent",
+  "fillStyle": "solid",
+  "strokeWidth": 1,
+  "strokeStyle": "solid",
+  "roughness": 1,
+  "opacity": 100,
+  "textAlign": "left",
+  "verticalAlign": "top",
+  "containerId": null
+}
+```
+
+- Title: the feature or operation name (e.g. `"Delete Logs"`, `"setTcgState (enable / disable)"`)
+- Description: one sentence explaining what the diagram shows (e.g. `"Covers EMS and Radio file deletion, including audit logging and error propagation."`)
+- Lifeline labels start below the description — leave at least 20px gap between description bottom and lifeline label top
+
 ### 1. Lifeline Bar
 
-A thin vertical rectangle representing a participant.
+A thin vertical rectangle representing a participant. **This is the vertical line you see in sequence diagrams. It is mandatory. Do not skip it.**
 
 ```json
 {
@@ -34,18 +164,26 @@ A thin vertical rectangle representing a participant.
   "y": <header_bottom_y>,
   "width": 35,
   "height": <total_diagram_height>,
+  "angle": 0,
   "strokeColor": "#1e1e1e",
   "backgroundColor": "#e9ecef",
   "fillStyle": "solid",
   "strokeWidth": 2,
   "strokeStyle": "solid",
   "roughness": 1,
-  "roundness": { "type": 3 }
+  "opacity": 100,
+  "groupIds": [],
+  "frameId": null,
+  "roundness": { "type": 3 },
+  "boundElements": [],
+  "link": null,
+  "locked": false
 }
 ```
 
-- One per participant
-- `height` should span all flow groups + 40px margin
+- One rectangle per participant — **if you have 6 participants, you need 6 bar rectangles**
+- `height` must span from `header_bottom_y` to the bottom of the last flow group plus 40px
+- External system participants use `strokeColor: "#1971c2"` on the bar
 
 ### 2. Lifeline Label
 
@@ -107,36 +245,57 @@ Paired with a label:
 ```json
 {
   "type": "arrow",
-  "x": <from_lifeline_right_x>,
+  "x": <from_center_x + 17>,
   "y": <row_y>,
+  "width": <to_center_x - from_center_x - 34>,
+  "height": 0,
+  "angle": 0,
   "strokeColor": "<message_color>",
   "backgroundColor": "transparent",
+  "fillStyle": "solid",
   "strokeWidth": 2,
   "strokeStyle": "solid",
   "roughness": 1,
-  "endArrowhead": "arrow",
-  "startArrowhead": null,
-  "elbowed": false,
+  "opacity": 100,
+  "groupIds": [],
+  "frameId": null,
   "roundness": { "type": 2 },
-  "points": [[0, 0], [<distance>, 0]],
-  "boundElements": [{ "id": "<label_id>", "type": "text" }]
+  "boundElements": [{ "id": "<label_id>", "type": "text" }],
+  "link": null,
+  "locked": false,
+  "startArrowhead": null,
+  "endArrowhead": "arrow",
+  "elbowed": false,
+  "points": [[0, 0], [<to_center_x - from_center_x - 34>, 0]]
 }
 ```
 
-- `distance` is positive (left → right)
-- When the arrow label visually crosses another element, set `backgroundColor: "#ffffff"` on both the arrow and its label text to act as a readability mask
+**Arrow width formula** (adjacent participants, 190px spacing):
+```
+width = 190 - 34 = 156
+```
+For non-adjacent participants (skipping N lifelines):
+```
+width = (N × 190) - 34
+```
+
+- When the arrow label crosses another element, set `backgroundColor: "#ffffff"` on both the arrow and its label
 
 ### 5. Return Arrow
 
-Same structure as a forward call, but `points` go negative:
+Same structure, but `x` starts at the far participant and `points` go negative:
 
 ```json
-"points": [[0, 0], [-<distance>, 0]]
+{
+  "x": <to_center_x + 17>,
+  "width": <same as forward>,
+  "points": [[0, 0], [-(to_center_x - from_center_x - 34), 0]]
+}
 ```
 
 - **ACK / void returns**: `strokeStyle: "solid"`, `strokeColor: "#868e96"` (grey)
 - **DTO / data payload returns**: `strokeStyle: "dashed"`, `strokeColor: "#868e96"` (grey)
-- Label text is the return value: "ACK", "DataDto", entity name, etc.
+- Label text: "ACK", "DataDto", entity name, or return value
 
 ### 6. Arrow Label
 
@@ -345,20 +504,26 @@ Understanding what each participant does tells you **which participants to inclu
 
 ### Participants and Their Roles
 
+Two participants are **non-negotiable** and must never be omitted when their condition is met:
+
+> **`AuthFilter` is mandatory in every diagram where CLIENT makes any HTTP request.** No exceptions. Every request from CLIENT enters the system through AuthFilter before reaching any controller.
+>
+> **`auditLog` is mandatory in every diagram where the feature performs any write, update, or delete operation.** If the feature mutates state, there is an audit trail. Omitting it means the diagram is wrong.
+
 | Participant | Role | Include when |
 |---|---|---|
 | `CLIENT` | Frontend — initiates all user-driven requests | Feature has any user-triggered action |
-| `AuthFilter` | Security gate — validates JWT, rejects unauthorized requests before they reach the controller | Feature is reachable via HTTP |
-| `<Domain>Controller` | REST entry point — receives the authorized request, delegates to Service, returns HTTP response | Feature exposes an HTTP endpoint |
-| `<Domain>Service` | Domain logic — orchestrates the operation: checks state, calls device, updates DB, manages operation context | Almost always |
-| `OpStateService` | Generic async-operation tracker — holds `OpCtx<T>` with state `IN_PROGRESS → SUCCESS/FAILED`; each entity provides its own `EntityOperationContext` implementation | Feature has an async hardware operation with a completion condition |
-| `<Domain>ServiceScheduler` | Domain wrapper around the Scheduler — registers `this::FetchData` on startup; owns the polling loop for this entity | Feature polls a device on a timer |
-| `Scheduler` | Spring framework scheduler — fires registered tasks on a timer | Feature polls a device on a timer |
-| `<Device>` / external system | Actual external hardware or system (RadioDevice, BNET, etc.) — HTTP calls to it are real device commands or status reads | Feature communicates with hardware or an external system |
-| `<Domain>Repo` | Database repository — reads or writes the DB | Feature reads or writes persisted data |
-| `fileService` | Saves files to disk (e.g. mission files) | Feature involves file I/O |
-| `auditLog` | Writes audit trail entries | Feature requires audit logging |
-| `radioClient` / `<Domain>Client` | HTTP client wrapper around external system calls | Feature uses a client abstraction layer over an external system |
+| `AuthFilter` ⚠️ | Security gate — validates JWT, rejects unauthorized requests | **Any CLIENT HTTP request — mandatory, no exceptions** |
+| `<Domain>Controller` | REST entry point — delegates to Service, returns HTTP response | Feature exposes an HTTP endpoint |
+| `<Domain>Service` | Domain logic — orchestrates the operation | Almost always |
+| `OpStateService` | Generic async-operation tracker — `IN_PROGRESS → SUCCESS/FAILED` | Feature has an async hardware operation |
+| `<Domain>ServiceScheduler` | Domain wrapper around Scheduler — owns the polling loop | Feature polls a device on a timer |
+| `Scheduler` | Spring scheduler — fires registered tasks | Feature polls a device on a timer |
+| `<Device>` / external system | External hardware or system (RadioDevice, BNET, etc.) | Feature communicates with hardware |
+| `<Domain>Repo` | Database repository | Feature reads or writes persisted data |
+| `fileService` | Saves files to disk | Feature involves file I/O |
+| `auditLog` ⚠️ | Writes audit trail entries | **Any write / update / delete operation — mandatory, no exceptions** |
+| `radioClient` / `<Domain>Client` | HTTP client wrapper over external system | Feature uses a client abstraction layer |
 
 **External system lifelines** (devices, BNET, etc.) use `strokeColor: "#1971c2"` (blue) on their lifeline bar and label to signal the external boundary. Each external system gets its own lifeline.
 
@@ -539,10 +704,18 @@ This makes the scope visible, lets the user correct the plan before any JSON is 
 
 | Mistake | Fix |
 |---|---|
+| **Arrows invisible until double-clicked** | Both the array position AND the `index` field are wrong. Arrows must appear after all lifeline bars in the array AND have a higher `index` value (use `e0`+ for arrows, `b0`+ for bars). |
+| **`AuthFilter` missing** | AuthFilter is mandatory whenever CLIENT makes any HTTP request. Never omit it. |
+| **`auditLog` missing** | auditLog is mandatory whenever the feature performs any write, update, or delete. Never omit it. |
+| **`fillStyle: "hachure"`** | Always `"fillStyle": "solid"` on every element — arrows, text, rectangles |
+| **`strokeWidth: 1` on arrows** | Arrows must use `strokeWidth: 2`. Only flow group containers use `strokeWidth: 1` |
 | Arrow label not bound to arrow | Set `containerId` on text and `boundElements` on arrow |
-| Return arrow going right | Points must be `[[0,0],[-distance,0]]` |
+| Return arrow going right | `x` must start at the far participant; `points` must be `[[0,0],[-width,0]]` |
 | Self-loop not elbowed | Set `"elbowed": true` and use 4-point path |
-| Note box overlaps lifeline | Place note boxes at x > 590 (right of last standard lifeline) |
-| Mixed `roughness` values | Always `roughness: 1` for consistency |
+| Note box overlaps lifeline | Place note boxes to the right of all lifeline bars |
+| Mixed `roughness` values | Always `roughness: 1` |
 | Wrong font | Always `fontFamily: 5` |
-| Flow container covers wrong rows | Measure exact y start/end of all rows in the group |
+| Flow container covers wrong rows | The container `y` starts 40px above the first row in the block (for the label). `height` = last_row_y - group_start_y + 60px |
+| No diagram title or description | Every diagram needs a title (`fontSize: 28`) and a one-sentence description (`fontSize: 16`, grey) above the lifeline headers |
+| Blocks too close together — arrow labels clipped | Minimum 80px gap between the last arrow of one block and the first arrow of the next. Flow group container starts 40px above the first arrow to fit the group label. |
+| Block order wrong | On App start → Mutation/Update → Periodically → Error. Never deviate. |
