@@ -9,7 +9,8 @@ $ErrorActionPreference = "Stop"
 $repo = $PSScriptRoot
 $userHome = $env:USERPROFILE
 
-$copilotDir = "$env:LOCALAPPDATA\github-copilot\intellij"
+$copilotDir    = "$env:LOCALAPPDATA\github-copilot\intellij"
+$vsCodeSettings = "$env:APPDATA\Code\User\settings.json"
 
 $links = @(
     # Claude Code + OpenCode (reads ~/.claude as fallback)
@@ -65,6 +66,33 @@ foreach ($entry in $links) {
     New-Item -ItemType SymbolicLink -Path $link -Target $target | Out-Null
     Write-Host "  OK    $link"
     Write-Host "        -> $target"
+}
+
+Write-Host ""
+Write-Host "Configuring VS Code Copilot instructions..."
+
+if (Test-Path -LiteralPath $vsCodeSettings) {
+    $settings = Get-Content -LiteralPath $vsCodeSettings -Raw | ConvertFrom-Json
+
+    $codeInstructions = @(
+        @{ file = "$repo\instructions\SHARED.md" },
+        @{ file = "$repo\instructions\VSCODE.md" }
+    )
+    $commitInstructions = @(
+        @{ file = "$repo\instructions\GIT_COMMIT.md" }
+    )
+
+    $settings | Add-Member -Force -MemberType NoteProperty `
+        -Name "github.copilot.chat.codeGeneration.instructions"         -Value $codeInstructions
+    $settings | Add-Member -Force -MemberType NoteProperty `
+        -Name "github.copilot.chat.commitMessageGeneration.instructions" -Value $commitInstructions
+
+    $settings | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $vsCodeSettings -Encoding UTF8
+    Write-Host "  OK    $vsCodeSettings"
+    Write-Host "        -> codeGeneration.instructions -> SHARED.md + VSCODE.md"
+    Write-Host "        -> commitMessageGeneration.instructions -> GIT_COMMIT.md"
+} else {
+    Write-Host "  SKIP  VS Code settings.json not found at $vsCodeSettings"
 }
 
 Write-Host ""

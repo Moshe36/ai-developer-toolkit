@@ -54,6 +54,7 @@ No re-run needed. Tools read through the symlinks, so a pull is instantly live.
 | **OpenCode** | `~/.config/opencode/AGENTS.md` (also reads `~/.claude/` natively as fallback) |
 | **Codex CLI** | `~/.codex/AGENTS.md` |
 | **Copilot IntelliJ** | `global-copilot-instructions.md`, `global-agents-instructions.md`, `global-git-commit-instructions.md` |
+| **Copilot VS Code** | `settings.json` patched with `codeGeneration.instructions` → `SHARED.md` + `VSCODE.md`; `commitMessageGeneration.instructions` → `GIT_COMMIT.md` |
 
 ---
 
@@ -64,6 +65,7 @@ instructions/   Canonical AI behavior rules
   SHARED.md       Single source of truth — all tools derive from this
   CLAUDE.md       Claude Code-specific additions
   COPILOT.md      Copilot IntelliJ-specific additions
+  VSCODE.md       Copilot VS Code-specific additions
   GIT_COMMIT.md   Git commit message guidelines
 
 skills/         Reusable skill definitions (loaded on-demand by AI tools)
