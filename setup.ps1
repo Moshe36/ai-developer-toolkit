@@ -147,7 +147,7 @@ function Initialize-RTK($rtkExe) {
         return
     }
 
-    & $rtkExe init -g --opencode --auto-patch 2>&1 | ForEach-Object { Write-Log "INFO" "$_" }
+    & $rtkExe init -g --opencode --auto-patch
     if ($LASTEXITCODE -eq 0) {
         Write-Log "OK" "rtk init -g --opencode"
     } else {
