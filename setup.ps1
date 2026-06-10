@@ -154,6 +154,13 @@ function Initialize-RTK($rtkExe) {
         Write-Log "SKIP" "rtk init failed (exit $LASTEXITCODE)"
         Write-Log "INFO" "Run manually: $rtkExe init -g --opencode"
     }
+
+    & $rtkExe telemetry disable
+    if ($LASTEXITCODE -eq 0) {
+        Write-Log "OK" "rtk telemetry disabled"
+    } else {
+        Write-Log "SKIP" "rtk telemetry disable failed (exit $LASTEXITCODE)"
+    }
 }
 
 function Update-VSCodeSettings($settingsPath, $repo) {
