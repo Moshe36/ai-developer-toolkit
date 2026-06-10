@@ -107,6 +107,55 @@ function New-Symlink($link, $target) {
     New-Item -ItemType SymbolicLink -Path $link -Target $target | Out-Null
 }
 
+function Install-RTK($binDir) {
+    $rtkExe = "$binDir\rtk.exe"
+    $rtkZip = "$env:TEMP\rtk-windows.zip"
+    $rtkUrl = "https://github.com/rtk-ai/rtk/releases/latest/download/rtk-x86_64-pc-windows-msvc.zip"
+
+    if (-not (Test-Path -LiteralPath $binDir)) {
+        New-Item -ItemType Directory -Path $binDir | Out-Null
+    }
+
+    if (Test-Path -LiteralPath $rtkExe) {
+        try {
+            $version = & $rtkExe --version 2>&1
+            Write-Log "SKIP" "RTK already installed" "$version"
+            return $rtkExe
+        } catch {
+            Write-Log "INFO" "rtk.exe exists but failed to run — reinstalling"
+        }
+    }
+
+    try {
+        Write-Log "INFO" "Downloading RTK from GitHub releases..."
+        Invoke-WebRequest -Uri $rtkUrl -OutFile $rtkZip -UseBasicParsing
+        Expand-Archive -LiteralPath $rtkZip -DestinationPath $binDir -Force
+        Remove-Item -LiteralPath $rtkZip -Force
+        Write-Log "OK" "RTK installed" $rtkExe
+    } catch {
+        Write-Log "SKIP" "RTK download failed" "$_"
+        Write-Log "INFO" "Install manually: https://github.com/rtk-ai/rtk/releases"
+        return $null
+    }
+
+    return $rtkExe
+}
+
+function Initialize-RTK($rtkExe) {
+    if (-not $rtkExe -or -not (Test-Path -LiteralPath $rtkExe)) {
+        Write-Log "SKIP" "rtk init (binary not available)"
+        return
+    }
+
+    try {
+        & $rtkExe init -g --opencode --auto-patch 2>&1 | ForEach-Object { Write-Log "INFO" $_ }
+        Write-Log "OK" "rtk init -g --opencode"
+    } catch {
+        Write-Log "SKIP" "rtk init failed" "$_"
+        Write-Log "INFO" "Run manually: $rtkExe init -g --opencode"
+    }
+}
+
 function Update-VSCodeSettings($settingsPath, $repo) {
     if (-not (Test-Path -LiteralPath $settingsPath)) {
         Write-Log "SKIP" "VS Code settings.json not found" $settingsPath
@@ -161,6 +210,11 @@ foreach ($entry in $links) {
 Write-Host ""
 Write-Log "INFO" "Configuring VS Code Copilot instructions..."
 Update-VSCodeSettings $vsCodeSettings $repo
+
+Write-Host ""
+Write-Log "INFO" "Installing RTK (token-saving CLI proxy)..."
+$rtkExe = Install-RTK "$repo\bin"
+Initialize-RTK $rtkExe
 
 Write-Host ""
 Write-Log "INFO" "Done. To update: git pull inside $repo"
