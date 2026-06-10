@@ -122,7 +122,7 @@ function Install-RTK($binDir) {
             Write-Log "SKIP" "RTK already installed" "$version"
             return $rtkExe
         } catch {
-            Write-Log "INFO" "rtk.exe exists but failed to run — reinstalling"
+            Write-Log "INFO" "rtk.exe exists but failed to run - reinstalling"
         }
     }
 
