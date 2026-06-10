@@ -141,6 +141,26 @@ function Install-RTK($binDir) {
     return $rtkExe
 }
 
+function Add-BinToUserPath($binDir) {
+    $regPath = "HKCU:\Environment"
+    $current = (Get-ItemProperty -LiteralPath $regPath -Name "Path" -ErrorAction SilentlyContinue).Path
+    if (-not $current) { $current = "" }
+
+    $parts = $current -split ";" | Where-Object { $_ -ne "" }
+    if ($parts -contains $binDir) {
+        Write-Log "SKIP" "PATH already contains bin dir" $binDir
+        return
+    }
+
+    $newPath = ($parts + $binDir) -join ";"
+    Set-ItemProperty -LiteralPath $regPath -Name "Path" -Value $newPath
+    Write-Log "OK" "Added to user PATH" $binDir
+    Write-Log "INFO" "Restart your terminal for PATH changes to take effect"
+
+    # Propagate to the current session so subsequent steps can use rtk immediately
+    $env:PATH = $env:PATH.TrimEnd(";") + ";$binDir"
+}
+
 function Initialize-RTK($rtkExe) {
     if (-not $rtkExe -or -not (Test-Path -LiteralPath $rtkExe)) {
         Write-Log "SKIP" "rtk init (binary not available)"
@@ -220,7 +240,9 @@ Update-VSCodeSettings $vsCodeSettings $repo
 
 Write-Host ""
 Write-Log "INFO" "Installing RTK (token-saving CLI proxy)..."
-$rtkExe = Install-RTK "$repo\bin"
+$binDir = "$repo\bin"
+$rtkExe = Install-RTK $binDir
+Add-BinToUserPath $binDir
 Initialize-RTK $rtkExe
 
 Write-Host ""
