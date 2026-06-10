@@ -147,11 +147,11 @@ function Initialize-RTK($rtkExe) {
         return
     }
 
-    try {
-        & $rtkExe init -g --opencode --auto-patch 2>&1 | ForEach-Object { Write-Log "INFO" $_ }
+    & $rtkExe init -g --opencode --auto-patch 2>&1 | ForEach-Object { Write-Log "INFO" "$_" }
+    if ($LASTEXITCODE -eq 0) {
         Write-Log "OK" "rtk init -g --opencode"
-    } catch {
-        Write-Log "SKIP" "rtk init failed" "$_"
+    } else {
+        Write-Log "SKIP" "rtk init failed (exit $LASTEXITCODE)"
         Write-Log "INFO" "Run manually: $rtkExe init -g --opencode"
     }
 }
