@@ -223,19 +223,30 @@ function Install-GH {
     }
 }
 
+function Invoke-RTKInit($rtkExe, $label, $args) {
+    & $rtkExe @args
+    if ($LASTEXITCODE -eq 0) {
+        Write-Log "OK" "rtk init $label"
+    } else {
+        Write-Log "SKIP" "rtk init $label failed (exit $LASTEXITCODE)"
+        Write-Log "INFO" "Run manually: $rtkExe init $label"
+    }
+}
+
 function Initialize-RTK($rtkExe) {
     if (-not $rtkExe -or -not (Test-Path -LiteralPath $rtkExe)) {
         Write-Log "SKIP" "rtk init (binary not available)"
         return
     }
 
-    & $rtkExe init -g --opencode --auto-patch
-    if ($LASTEXITCODE -eq 0) {
-        Write-Log "OK" "rtk init -g --opencode"
-    } else {
-        Write-Log "SKIP" "rtk init failed (exit $LASTEXITCODE)"
-        Write-Log "INFO" "Run manually: $rtkExe init -g --opencode"
-    }
+    # Claude Code + OpenCode plugin
+    Invoke-RTKInit $rtkExe "-g --opencode --auto-patch" @("init", "-g", "--opencode", "--auto-patch")
+
+    # Copilot (VS Code + CLI hooks)
+    Invoke-RTKInit $rtkExe "-g --copilot --auto-patch" @("init", "-g", "--copilot", "--auto-patch")
+
+    # Codex CLI (cannot combine with --auto-patch)
+    Invoke-RTKInit $rtkExe "-g --codex" @("init", "-g", "--codex")
 
     & $rtkExe telemetry disable
     if ($LASTEXITCODE -eq 0) {
