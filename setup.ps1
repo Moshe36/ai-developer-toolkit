@@ -164,7 +164,8 @@ function Add-BinToUserPath($binDir) {
 function Install-Ripgrep($binDir) {
     $rgExe = "$binDir\rg.exe"
     $rgZip = "$env:TEMP\ripgrep-windows.zip"
-    $rgUrl = "https://github.com/BurntSushi/ripgrep/releases/latest/download/ripgrep-x86_64-pc-windows-msvc.zip"
+    $rgVersion = (Invoke-WebRequest -Uri "https://api.github.com/repos/BurntSushi/ripgrep/releases/latest" -UseBasicParsing | ConvertFrom-Json).tag_name
+    $rgUrl = "https://github.com/BurntSushi/ripgrep/releases/download/$rgVersion/ripgrep-$rgVersion-x86_64-pc-windows-msvc.zip"
 
     if (-not (Test-Path -LiteralPath $binDir)) {
         New-Item -ItemType Directory -Path $binDir | Out-Null
@@ -210,7 +211,8 @@ function Install-GH {
     try {
         Write-Log "INFO" "Installing GitHub CLI via winget..."
         winget install --id GitHub.cli --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null
-        if ($LASTEXITCODE -eq 0) {
+        # 0 = installed, -1978335189 (0x8A150023) = already installed — both are success
+        if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq -1978335189) {
             Write-Log "OK" "GitHub CLI (gh) installed"
             Write-Log "INFO" "Restart your terminal for gh to be available on PATH"
         } else {
@@ -223,8 +225,8 @@ function Install-GH {
     }
 }
 
-function Invoke-RTKInit($rtkExe, $label, $args) {
-    & $rtkExe @args
+function Invoke-RTKInit($rtkExe, $label, $cmdArgs) {
+    & $rtkExe @cmdArgs
     if ($LASTEXITCODE -eq 0) {
         Write-Log "OK" "rtk init $label"
     } else {
@@ -329,4 +331,6 @@ Install-GH
 Write-Host ""
 Write-Log "INFO" "Done. To update: git pull inside $repo"
 Write-Host ""
-Read-Host "Press Enter to exit"
+if ([Environment]::UserInteractive -and -not ([Console]::IsInputRedirected)) {
+    Read-Host "Press Enter to exit"
+}
