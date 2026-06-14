@@ -161,6 +161,68 @@ function Add-BinToUserPath($binDir) {
     $env:PATH = $env:PATH.TrimEnd(";") + ";$binDir"
 }
 
+function Install-Ripgrep($binDir) {
+    $rgExe = "$binDir\rg.exe"
+    $rgZip = "$env:TEMP\ripgrep-windows.zip"
+    $rgUrl = "https://github.com/BurntSushi/ripgrep/releases/latest/download/ripgrep-x86_64-pc-windows-msvc.zip"
+
+    if (-not (Test-Path -LiteralPath $binDir)) {
+        New-Item -ItemType Directory -Path $binDir | Out-Null
+    }
+
+    if (Test-Path -LiteralPath $rgExe) {
+        try {
+            $version = & $rgExe --version 2>&1 | Select-Object -First 1
+            Write-Log "SKIP" "ripgrep already installed" "$version"
+            return
+        } catch {
+            Write-Log "INFO" "rg.exe exists but failed to run - reinstalling"
+        }
+    }
+
+    try {
+        Write-Log "INFO" "Downloading ripgrep from GitHub releases..."
+        Invoke-WebRequest -Uri $rgUrl -OutFile $rgZip -UseBasicParsing
+        # Extract only rg.exe from the nested folder inside the zip
+        $tmpDir = "$env:TEMP\ripgrep-extract"
+        if (Test-Path -LiteralPath $tmpDir) { Remove-Item -LiteralPath $tmpDir -Recurse -Force }
+        Expand-Archive -LiteralPath $rgZip -DestinationPath $tmpDir -Force
+        $rgSource = Get-ChildItem -LiteralPath $tmpDir -Recurse -Filter "rg.exe" | Select-Object -First 1
+        if ($rgSource) {
+            Copy-Item -LiteralPath $rgSource.FullName -Destination $rgExe -Force
+        }
+        Remove-Item -LiteralPath $tmpDir -Recurse -Force
+        Remove-Item -LiteralPath $rgZip -Force
+        Write-Log "OK" "ripgrep installed" $rgExe
+    } catch {
+        Write-Log "SKIP" "ripgrep download failed" "$_"
+        Write-Log "INFO" "Install manually: https://github.com/BurntSushi/ripgrep/releases"
+    }
+}
+
+function Install-GH {
+    if (Get-Command gh -ErrorAction SilentlyContinue) {
+        $version = gh --version 2>&1 | Select-Object -First 1
+        Write-Log "SKIP" "gh already installed" "$version"
+        return
+    }
+
+    try {
+        Write-Log "INFO" "Installing GitHub CLI via winget..."
+        winget install --id GitHub.cli --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Log "OK" "GitHub CLI (gh) installed"
+            Write-Log "INFO" "Restart your terminal for gh to be available on PATH"
+        } else {
+            Write-Log "SKIP" "winget install gh failed (exit $LASTEXITCODE)"
+            Write-Log "INFO" "Install manually: https://cli.github.com"
+        }
+    } catch {
+        Write-Log "SKIP" "GitHub CLI install failed" "$_"
+        Write-Log "INFO" "Install manually: https://cli.github.com"
+    }
+}
+
 function Initialize-RTK($rtkExe) {
     if (-not $rtkExe -or -not (Test-Path -LiteralPath $rtkExe)) {
         Write-Log "SKIP" "rtk init (binary not available)"
@@ -244,6 +306,14 @@ $binDir = "$repo\bin"
 $rtkExe = Install-RTK $binDir
 Add-BinToUserPath $binDir
 Initialize-RTK $rtkExe
+
+Write-Host ""
+Write-Log "INFO" "Installing ripgrep (required by rtk grep)..."
+Install-Ripgrep $binDir
+
+Write-Host ""
+Write-Log "INFO" "Installing GitHub CLI (required by rtk gh)..."
+Install-GH
 
 Write-Host ""
 Write-Log "INFO" "Done. To update: git pull inside $repo"
