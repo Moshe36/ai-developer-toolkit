@@ -398,6 +398,25 @@ function Invoke-RTKInit($rtkExe, $label, $cmdArgs) {
     }
 }
 
+function Repair-OpenCodePlugin($rtkExe) {
+    # rtk init --opencode generates a plugin that uses `which rtk` — a Unix-only command.
+    # On Windows this throws, the catch disables the plugin. Patch it to use `where.exe` instead.
+    $pluginPath = "$env:USERPROFILE\.config\opencode\plugins\rtk.ts"
+    if (-not (Test-Path -LiteralPath $pluginPath)) {
+        Write-Log "SKIP" "rtk OpenCode plugin not found" $pluginPath
+        return
+    }
+    $content = Get-Content -LiteralPath $pluginPath -Raw -Encoding UTF8
+    if ($content -notmatch 'which rtk') {
+        Write-Log "SKIP" "rtk plugin already patched (no 'which rtk')"
+        return
+    }
+    # Replace `which rtk` with `where.exe rtk` (works on Windows; where.exe is always in system32)
+    $patched = $content -replace 'which rtk', 'where.exe rtk'
+    Set-Content -LiteralPath $pluginPath -Value $patched -Encoding UTF8
+    Write-Log "OK" "rtk OpenCode plugin patched (which -> where.exe)" $pluginPath
+}
+
 function Initialize-RTK($rtkExe) {
     if (-not $rtkExe -or -not (Test-Path -LiteralPath $rtkExe)) {
         Write-Log "SKIP" "rtk init (binary not available)"
@@ -406,6 +425,7 @@ function Initialize-RTK($rtkExe) {
 
     # Claude Code + OpenCode plugin
     Invoke-RTKInit $rtkExe "-g --opencode --auto-patch" @("init", "-g", "--opencode", "--auto-patch")
+    Repair-OpenCodePlugin $rtkExe
 
     # Copilot (VS Code + CLI hooks)
     Invoke-RTKInit $rtkExe "-g --copilot --auto-patch" @("init", "-g", "--copilot", "--auto-patch")
