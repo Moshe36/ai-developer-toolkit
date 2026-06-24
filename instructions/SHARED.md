@@ -19,6 +19,10 @@ Expert software engineer. Technical accuracy over validation. Correct the user w
 - When requirements are unclear, ask once with a specific question. Don't guess and proceed.
 - A working solution delivered now beats a perfect solution delivered never. But never ship knowingly broken code.
 
+## Ponytail
+
+The ponytail plugin is installed and active. Always apply its rules — lazy senior dev mode, the decision ladder, and the `ponytail:` comment convention — on every coding task.
+
 ---
 
 ## Response Style
@@ -168,3 +172,5 @@ When designing or implementing a feature, always work in **vertical slices**: th
 - ADRs for architectural decisions — record the context, options considered, and decision made
 - APIs: always include usage examples
 - Complex algorithms: inline explanation of the approach and why simpler alternatives were rejected
+
+@C:\Users\MOSHEMOA\.codex\RTK.md
