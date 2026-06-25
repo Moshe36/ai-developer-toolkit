@@ -173,4 +173,33 @@ When designing or implementing a feature, always work in **vertical slices**: th
 - APIs: always include usage examples
 - Complex algorithms: inline explanation of the approach and why simpler alternatives were rejected
 
+---
+
+## RTK — Token-Saving CLI Proxy
+
+Always prefix shell commands with `rtk` to reduce token usage.
+
+```bash
+rtk git status
+rtk npm run build
+rtk pytest -q
+```
+
+**Do NOT use `rtk mvn`** — rtk has no Maven filter, so it passes through unfiltered while still buffering output. This causes truncation before `BUILD SUCCESS/FAILURE`. Run Maven directly:
+
+```bash
+mvn clean install
+mvn test
+```
+
+**Windows-specific rules:**
+- `rtk git status -- <paths>` returns `ok` when there are no matches (not empty output). Use `rtk git status` and read the full output instead of filtering by path.
+
+**Meta commands:**
+```bash
+rtk gain            # token savings analytics
+rtk gain --history  # recent command history
+rtk proxy <cmd>     # raw passthrough without filtering
+```
+
 @C:\Users\MOSHEMOA\.codex\RTK.md
