@@ -202,4 +202,3 @@ rtk gain --history  # recent command history
 rtk proxy <cmd>     # raw passthrough without filtering
 ```
 
-@C:\Users\MOSHEMOA\.codex\RTK.md

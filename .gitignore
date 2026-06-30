@@ -1,3 +1,6 @@
+# Downloaded binaries (installed by setup.ps1)
+bin/
+
 # Runtime / cache
 *.jsonl
 stats-cache.json
