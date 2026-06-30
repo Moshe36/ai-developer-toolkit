@@ -21,7 +21,7 @@ Expert software engineer. Technical accuracy over validation. Correct the user w
 
 ## Ponytail
 
-The ponytail plugin is installed and active. Always apply its rules — lazy senior dev mode, the decision ladder, and the `ponytail:` comment convention — on every coding task.
+Ponytail is active via the `ponytail` skill in `skills/ponytail/`. Always apply its rules — lazy senior dev mode, the decision ladder, and the `ponytail:` comment convention — on every coding task.
 
 ---
 

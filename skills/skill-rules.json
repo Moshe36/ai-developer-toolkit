@@ -226,6 +226,110 @@
                 ]
             }
         },
+        "ponytail": {
+            "type": "domain",
+            "enforcement": "suggest",
+            "priority": "high",
+            "description": "Forces the laziest solution that works: YAGNI, stdlib-first, shortest diff",
+            "promptTriggers": {
+                "keywords": [
+                    "ponytail",
+                    "be lazy",
+                    "lazy mode",
+                    "yagni",
+                    "over-engineered"
+                ],
+                "intentPatterns": [
+                    "simplest.*(solution|approach|way)",
+                    "(minimal|shortest).*(solution|path|code)",
+                    "(too much|unnecessary).*(boilerplate|abstraction|complexity)"
+                ]
+            }
+        },
+        "ponytail-review": {
+            "type": "domain",
+            "enforcement": "suggest",
+            "priority": "high",
+            "description": "Over-engineering review: finds what to delete, shrink, or replace with stdlib",
+            "promptTriggers": {
+                "keywords": [
+                    "ponytail-review",
+                    "over-engineering review",
+                    "what can we delete"
+                ],
+                "intentPatterns": [
+                    "review.*(over.engin|complexity|bloat)",
+                    "is this over.engin"
+                ]
+            }
+        },
+        "ponytail-audit": {
+            "type": "domain",
+            "enforcement": "suggest",
+            "priority": "medium",
+            "description": "Whole-repo audit for over-engineering: ranked list of what to cut",
+            "promptTriggers": {
+                "keywords": [
+                    "ponytail-audit",
+                    "audit for over-engineering",
+                    "find bloat"
+                ],
+                "intentPatterns": [
+                    "audit.*(codebase|repo).*(over.engin|bloat|complexity)",
+                    "what can.*(delete|remove).*(repo|codebase)"
+                ]
+            }
+        },
+        "ponytail-debt": {
+            "type": "domain",
+            "enforcement": "suggest",
+            "priority": "medium",
+            "description": "Harvest ponytail: comments into a debt ledger",
+            "promptTriggers": {
+                "keywords": [
+                    "ponytail debt",
+                    "ponytail-debt",
+                    "ponytail ledger"
+                ],
+                "intentPatterns": [
+                    "what did ponytail defer",
+                    "list.*(shortcuts|deferrals)"
+                ]
+            }
+        },
+        "ponytail-gain": {
+            "type": "domain",
+            "enforcement": "suggest",
+            "priority": "low",
+            "description": "Show ponytail's measured impact scoreboard",
+            "promptTriggers": {
+                "keywords": [
+                    "ponytail-gain",
+                    "ponytail gain",
+                    "ponytail scoreboard"
+                ],
+                "intentPatterns": [
+                    "what does ponytail save",
+                    "show ponytail impact"
+                ]
+            }
+        },
+        "ponytail-help": {
+            "type": "domain",
+            "enforcement": "suggest",
+            "priority": "low",
+            "description": "Quick-reference card for all ponytail modes and commands",
+            "promptTriggers": {
+                "keywords": [
+                    "ponytail-help",
+                    "ponytail help"
+                ],
+                "intentPatterns": [
+                    "what ponytail commands",
+                    "how.*(use|work).*(ponytail)"
+                ]
+            }
+        },
         "writing-clearly-and-concisely": {
             "type": "domain",
             "enforcement": "suggest",
