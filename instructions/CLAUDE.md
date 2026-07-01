@@ -40,3 +40,4 @@ Use `TodoWrite` to plan and track any task with 3+ distinct steps. Mark todos in
 ## Hooks
 
 Hooks in `hooks/` fire automatically on tool events. They are plain `.mjs` scripts requiring only Node. No installation needed.
+
