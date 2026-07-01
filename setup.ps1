@@ -241,22 +241,39 @@ function Invoke-RTKInit($rtkExe, $label, $cmdArgs) {
 }
 
 function Repair-OpenCodePlugin($rtkExe) {
-    # rtk init --opencode generates a plugin that uses `which rtk` — a Unix-only command.
-    # On Windows this throws, the catch disables the plugin. Patch it to use `where.exe` instead.
+    # rtk init --opencode generates a plugin with two known issues on Windows:
+    #   1. Uses `which rtk` — a Unix-only command. Patch to `where.exe rtk`.
+    #   2. Missing `export default` — OpenCode's plugin loader requires a default export;
+    #      without it the plugin is silently never loaded (rtk-ai/rtk#2516).
     $pluginPath = "$env:USERPROFILE\.config\opencode\plugins\rtk.ts"
     if (-not (Test-Path -LiteralPath $pluginPath)) {
         Write-Log "SKIP" "rtk OpenCode plugin not found" $pluginPath
         return
     }
     $content = Get-Content -LiteralPath $pluginPath -Raw -Encoding UTF8
-    if ($content -notmatch 'which rtk') {
-        Write-Log "SKIP" "rtk plugin already patched (no 'which rtk')"
-        return
+    $patched = $content
+
+    # Fix 1: which -> where.exe
+    if ($content -match 'which rtk') {
+        $patched = $patched -replace 'which rtk', 'where.exe rtk'
+        Write-Log "OK" "rtk OpenCode plugin patched (which -> where.exe)" $pluginPath
     }
-    # Replace `which rtk` with `where.exe rtk` (works on Windows; where.exe is always in system32)
-    $patched = $content -replace 'which rtk', 'where.exe rtk'
-    Set-Content -LiteralPath $pluginPath -Value $patched -Encoding UTF8
-    Write-Log "OK" "rtk OpenCode plugin patched (which -> where.exe)" $pluginPath
+
+    # Fix 2: add missing default export
+    if ($patched -notmatch 'export default') {
+        # Extract the exported const name (e.g. RtkOpenCodePlugin) and append the default export
+        if ($patched -match 'export const (\w+)') {
+            $exportName = $Matches[1]
+            $patched = $patched.TrimEnd() + "`n`nexport default $exportName`n"
+            Write-Log "OK" "rtk OpenCode plugin patched (added export default $exportName)" $pluginPath
+        }
+    }
+
+    if ($patched -ne $content) {
+        Set-Content -LiteralPath $pluginPath -Value $patched -Encoding UTF8
+    } else {
+        Write-Log "SKIP" "rtk OpenCode plugin already patched"
+    }
 }
 
 function Initialize-RTK($rtkExe) {

@@ -183,14 +183,17 @@ Always prefix shell commands with `rtk` to reduce token usage.
 rtk git status
 rtk npm run build
 rtk pytest -q
+rtk mvn clean install   # strips download noise, keeps errors + BUILD summary
 ```
 
-**Do NOT use `rtk mvn`** — rtk has no Maven filter, so it passes through unfiltered while still buffering output. This causes truncation before `BUILD SUCCESS/FAILURE`. Run Maven directly:
+**Do NOT prefix shell builtins with `rtk`** — `rtk cd`, `rtk export`, `rtk source` fork a subprocess; the side effect is lost when it exits. Use builtins directly:
 
 ```bash
-mvn clean install
-mvn test
+cd /path            # correct
+rtk cd /path        # wrong — directory change is lost
 ```
+
+**RTK output is intentional, not a typo.** When you run `rtk ruff check` and see `Ruff: No issues found`, that is the filtered output — do not re-run the command thinking you made a mistake. Accept the compact output and move on.
 
 **Windows-specific rules:**
 - `rtk git status -- <paths>` returns `ok` when there are no matches (not empty output). Use `rtk git status` and read the full output instead of filtering by path.
@@ -202,3 +205,4 @@ rtk gain --history  # recent command history
 rtk proxy <cmd>     # raw passthrough without filtering
 ```
 
+@C:\Users\moshemoa\.codex\RTK.md
