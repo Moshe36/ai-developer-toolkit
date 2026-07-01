@@ -195,8 +195,16 @@ rtk cd /path        # wrong — directory change is lost
 
 **RTK output is intentional, not a typo.** When you run `rtk ruff check` and see `Ruff: No issues found`, that is the filtered output — do not re-run the command thinking you made a mistake. Accept the compact output and move on.
 
+**Do NOT append `2>&1` to RTK commands.** RTK captures both stdout and stderr internally. Adding `2>&1` in the shell merges streams before RTK can filter them, which may degrade filtering. Drop the redirect:
+
+```bash
+rtk mvn compile -q        # correct
+rtk mvn compile -q 2>&1   # wrong — interferes with RTK's stream handling
+```
+
 **Windows-specific rules:**
 - `rtk git status -- <paths>` returns `ok` when there are no matches (not empty output). Use `rtk git status` and read the full output instead of filtering by path.
+- `rtk mvn compile -q` returns `mvn: ok` on success — this is correct filtered output, not a missed result.
 
 **Meta commands:**
 ```bash
