@@ -29,8 +29,16 @@ git clone https://github.com/Moshe36/ai-developer-toolkit.git "$env:USERPROFILE\
 
 ### 3. Run setup
 
+If PowerShell blocks the script ("running scripts is disabled on this system"), use the batch launcher instead — no policy change needed:
+
+```
+%USERPROFILE%\ai-developer-toolkit\setup.bat
+```
+
+Or run the PowerShell script directly with an explicit bypass:
+
 ```powershell
-& "$env:USERPROFILE\ai-developer-toolkit\setup.ps1"
+powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\ai-developer-toolkit\scripts\setup.ps1"
 ```
 
 That's it. The script creates symlinks from each tool's config location into this repo.

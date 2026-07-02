@@ -214,3 +214,5 @@ rtk proxy <cmd>     # raw passthrough without filtering
 ```
 
 @C:\Users\moshemoa\.codex\RTK.md
+
+@C:\Users\MOSHEMOA\.codex\RTK.md
