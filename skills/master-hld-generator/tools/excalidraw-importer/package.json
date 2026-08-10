@@ -1,0 +1,19 @@
+{
+  "name": "mermaid-markdown-to-excalidraw",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Convert every Mermaid block in a Markdown file into one editable Excalidraw scene.",
+  "scripts": {
+    "convert": "node importer.mjs",
+    "check": "node --check importer.mjs && node --check converter-browser.js"
+  },
+  "dependencies": {
+    "@excalidraw/excalidraw": "0.18.1",
+    "@excalidraw/mermaid-to-excalidraw": "2.2.2",
+    "playwright-core": "1.58.2",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "vite": "5.4.19"
+  }
+}

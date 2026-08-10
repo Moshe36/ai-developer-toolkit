@@ -1,6 +1,12 @@
 # Downloaded binaries (installed by setup.ps1)
 bin/
 
+# Node dependencies (skill tools)
+node_modules/
+
+# Packaged skill archives
+skills/*.zip
+
 # Runtime / cache
 *.jsonl
 stats-cache.json
