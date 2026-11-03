@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory)][ValidateSet('backend', 'frontend')][string]$Track,
-    [Parameter(Mandatory)][string]$Root
+    [Parameter(Mandatory)][string]$Root,
+    [string]$ChecksRoot = (Join-Path $env:LOCALAPPDATA 'task-tracker-checks')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -8,7 +9,8 @@ $taskTrackerDir = $PSScriptRoot
 $null = New-Item -ItemType Directory -Force $Root
 $rootPath = (Resolve-Path $Root).Path
 $repoPath = Join-Path $rootPath "task-tracker-$Track"
-$checksPath = Join-Path $rootPath ".checks-$Track"
+$null = New-Item -ItemType Directory -Force $ChecksRoot
+$checksPath = Join-Path (Resolve-Path $ChecksRoot).Path $Track
 
 if ((Test-Path $repoPath) -or (Test-Path $checksPath)) {
     throw "Workspace already exists under $rootPath for track '$Track'. Remove it first."
@@ -65,6 +67,6 @@ Install-Dependencies
 
 Write-Host ''
 Write-Host "Workspace ready: $repoPath"
-Write-Host "Checks (keep outside the repo): $checksPath"
+Write-Host "Checks (outside the repo, facilitator only): $checksPath"
 Write-Host "Reset:  cd $repoPath; git checkout -f ex-start; git clean -fd"
 Write-Host "Verify: & $checksPath\verify.ps1 -Repo $repoPath"

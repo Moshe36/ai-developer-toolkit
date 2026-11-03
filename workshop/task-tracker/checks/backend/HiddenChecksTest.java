@@ -19,12 +19,10 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("test")
 class HiddenChecksTest {
 
     @Autowired MockMvc mockMvc;
@@ -37,7 +35,6 @@ class HiddenChecksTest {
         memberRepository.deleteAll();
     }
 
-    // real name: creating a task for a member at the limit is rejected
     @Test
     void check_01() throws Exception {
         long dana = member("Dana");
@@ -49,7 +46,6 @@ class HiddenChecksTest {
         assertEquals(5, openCount(dana));
     }
 
-    // real name: reassigning a task to a member at the limit is rejected
     @Test
     void check_02() throws Exception {
         long dana = member("Dana");
@@ -63,7 +59,6 @@ class HiddenChecksTest {
         assertEquals(avi, taskRepository.findById(aviTask).orElseThrow().getAssigneeId());
     }
 
-    // real name: bulk assign never pushes a member over the limit
     @Test
     void check_03() throws Exception {
         long dana = member("Dana");
@@ -77,7 +72,6 @@ class HiddenChecksTest {
         assertTrue(openCount(dana) <= 5);
     }
 
-    // real name: reopening a done task for a member at the limit is rejected
     @Test
     void check_04() throws Exception {
         long dana = member("Dana");
@@ -90,7 +84,6 @@ class HiddenChecksTest {
         assertEquals(TaskStatus.DONE, taskRepository.findById(done).orElseThrow().getStatus());
     }
 
-    // real name: done tasks do not count toward the limit
     @Test
     void check_05() throws Exception {
         long dana = member("Dana");
@@ -103,7 +96,6 @@ class HiddenChecksTest {
         assertTrue(isSuccess(create("{\"title\":\"Next\",\"assigneeId\":" + dana + "}")));
     }
 
-    // real name: re-assigning a task to its current assignee is allowed
     @Test
     void check_06() throws Exception {
         long dana = member("Dana");
@@ -112,7 +104,6 @@ class HiddenChecksTest {
         assertTrue(isSuccess(patchTask(task, "{\"assigneeId\":" + dana + "}")));
     }
 
-    // real name: moving a task from TODO to IN_PROGRESS is allowed
     @Test
     void check_07() throws Exception {
         long dana = member("Dana");
@@ -121,7 +112,6 @@ class HiddenChecksTest {
         assertTrue(isSuccess(patchTask(task, "{\"status\":\"IN_PROGRESS\"}")));
     }
 
-    // real name: editing a title is allowed even when over the limit
     @Test
     void check_08() throws Exception {
         long noa = member("Noa");
@@ -131,7 +121,6 @@ class HiddenChecksTest {
         assertEquals(7, openCount(noa));
     }
 
-    // real name: unassigning a task is allowed
     @Test
     void check_09() throws Exception {
         long dana = member("Dana");
@@ -140,7 +129,6 @@ class HiddenChecksTest {
         assertTrue(isSuccess(patchTask(task, "{\"assigneeId\":null}")));
     }
 
-    // real name: rejection uses the standard error envelope
     @Test
     void check_10() throws Exception {
         long dana = member("Dana");
@@ -159,7 +147,6 @@ class HiddenChecksTest {
         return memberRepository.save(new Member(name)).getId();
     }
 
-    /** Saves n open tasks (mix of TODO and IN_PROGRESS) and returns the id of the first TODO one. */
     private long openTasks(long memberId, int n) {
         long firstId = 0;
         for (int i = 0; i < n; i++) {
