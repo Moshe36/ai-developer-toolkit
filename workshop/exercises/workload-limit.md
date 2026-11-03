@@ -1,70 +1,77 @@
 # Workshop Exercise — "Workload Limit"
 
-> Status: **DRAFT for review.** Not rehearsed. Decisions marked *(proposal)* are the assistant's calls and still need your approval.
+> Status: **DRAFT v2 for review.** Not built or rehearsed. Decisions marked *(proposal)* still need approval.
 
 ---
 
-## 1. What this exercise is for
+## 1. What this exercise teaches
 
-Participants implement **the same small user story four times**, once per workflow, and compare the results using objective evidence.
+Developers get a **realistic, slightly vague ticket**, the kind that shows up in real sprints. They implement it once with a one-shot prompt, then again with planning workflows that **force questions before code**.
+
+The message we want them to leave with:
+
+> I didn't think of these cases myself. A one-shot prompt didn't either. When the agent was forced to explore and question before coding, the result covered them, even though I'm the same developer with the same knowledge.
+
+The exercise **doesn't** reward knowing our private product decisions. Hidden tests only check behavior that **any sensible answer** would produce (section 6).
 
 | Trial | Workflow | What the participant does |
 |---|---|---|
-| A | Native | Run 1: raw one-line prompt. Reset. Run 2: specific prompt they write themselves. |
-| B | Lean stack-aware (grill-me + stack skills) | Same brief, reset code |
-| C | Superpowers | Same brief, reset code |
-| D | Agentcraft | Same brief, reset code |
-
-**The lesson is not "more process wins."** The lesson is:
-
-> For this task, what did each workflow help me notice or prevent, and what did it cost?
-
-### Why this story
-
-The story looks like a 10-line change. Underneath, it contains:
-
-- **Product decisions** that a clarifying or planning workflow should bring up
-- **Multiple code paths** that must all enforce the rule, including one that isn't obviously about "assignment"
-- **Existing behavior** that must not break
-- **Scope bait**, meaning messy nearby code that tempts the agent to refactor
-- **Deterministic verification**: no clocks, timezones, or randomness
+| A | Native | One-shot prompt from the ticket. Run checks. |
+| B | Lean stack-aware (grill-me + stack skills) | Same ticket, reset code |
+| C | Superpowers | Same ticket, reset code |
+| D | Agentcraft | Same ticket, reset code |
 
 ---
 
-## 2. Tracks
+## 2. The ticket (identical in every trial)
 
-Each participant picks **one track** for all four trials:
+> **TASK-214 — Prevent overloading team members**
+>
+> Team leads report that some people end up with way too many open tasks while others are idle. Add a rule: **a team member can't have more than 5 open tasks assigned to them.** If someone tries to go over, they should get a clear message.
+
+Why this ticket works:
+- It's real: workload limits exist in Jira/Linear-style tools and in support queues.
+- It has a purpose (overload) that lets an agent reason about edge cases.
+- It's vague in the normal way: it says *what*, not *where* or *every case*.
+
+### No product-owner card *(changed from v1)*
+Participants answer the agent's questions **from their own judgment**. Workflows like grill-me also recommend answers, which helps juniors.
+Different answers are expected and fine. Hidden tests are designed to accept any reasonable choice.
+
+---
+
+## 3. Tracks
 
 | Track | Who | Stack |
 |---|---|---|
 | Backend | Java / Spring Boot developers | Spring Boot 3.x, Java 21, JUnit 5 |
 | Frontend | React developers | React + TypeScript, Vitest, Testing Library, MSW mock API |
 
-**Optional full-stack variant**: the final adoption block or a stretch task. See section 10.
+Optional full-stack variant: section 10.
 
 ---
 
-## 3. The starting app — "Team Task Tracker"
+## 4. The starting app — "Team Task Tracker"
 
-Everything in this section **already exists** at git tag `ex-start`.
+Everything here **already exists** at git tag `ex-start`.
 
-### 3.1 Domain
+### 4.1 Domain
 
 ```
 Member { id, name }
 Task   { id, title, status: TODO | IN_PROGRESS | DONE, assigneeId?: string, createdAt }
 ```
 
-### 3.2 The four ways a task gets an assignee (the core of the exercise)
+### 4.2 The four ways a member gains an open task (the heart of the exercise)
 
-| # | Path | Where it lives | Why it's a trap |
+| # | Path | Endpoint | Why one-shot usually misses it |
 |---|---|---|---|
-| 1 | Create a task with an assignee | `POST /tasks` | Obvious |
-| 2 | Change a task's assignee | `PATCH /tasks/{id}` | Obvious |
-| 3 | Bulk assign selected tasks | `POST /tasks/bulk-assign` | Easy to forget; must be all-or-nothing |
-| 4 | **Reopen a DONE task** | `PATCH /tasks/{id}` with `status` | **Not about assignment at all.** Reopening increases the member's open count. Only exploring the code or planning catches this. |
+| 1 | Create a task with an assignee | `POST /tasks` | Usually caught |
+| 2 | Change a task's assignee | `PATCH /tasks/{id}` | Usually caught |
+| 3 | Bulk assign | `POST /tasks/bulk-assign` | A separate service method, easy to miss |
+| 4 | **Reopen a DONE task** | `PATCH /tasks/{id}` (status) | Not about "assignment" at all. Found only by exploring the code or asking "how else can the count go up?" |
 
-### 3.3 Backend (existing)
+### 4.3 Backend (existing)
 
 ```
 GET    /members                      -> [{ id, name, assignedTaskCount }]
@@ -74,255 +81,195 @@ PATCH  /tasks/{id}                   { title?, status?, assigneeId? }   // assig
 POST   /tasks/bulk-assign            { taskIds: [], assigneeId }
 ```
 
-- Layers: `TaskController` → `TaskService` / `AssignmentService` → repository (H2 or in-memory)
-- **Existing error envelope**, already used for 400 and 404 errors:
-  ```json
-  { "code": "TASK_NOT_FOUND", "message": "Task 42 not found", "field": null }
-  ```
-- `@ControllerAdvice` maps domain exceptions to that envelope
-- **Existing test suite passes** (CRUD, filters, sort, paging, bulk assign)
-- **Scope bait**: `AssignmentService` is long, has duplicated validation, and an odd method name. It works correctly.
+- `TaskController` → `TaskService` / `AssignmentService` → repository (H2 or in-memory)
+- **Existing error envelope** for 400/404: `{ "code", "message", "field" }` via `@ControllerAdvice`
+- Existing tests pass
+- **Scope bait:** a messy but working `AssignmentService`
 
-### 3.4 Frontend (existing)
+### 4.4 Frontend (existing)
 
-- **Task table**: filters (status, assignee), sort, bulk select checkbox, "Assign to…" bulk action
-- **Edit drawer**: title, status select (including reopening DONE), assignee dropdown
-- **Members sidebar**: name plus `assignedTaskCount`
-- **Mock API (MSW)** implementing exactly the backend contract, including the error envelope
-- **Existing test suite passes**
-- **Scope bait**: `TaskTable.tsx` is about 400 lines with inline handlers. It works correctly.
+- Task table: filters, sort, bulk select + "Assign to…"
+- Edit drawer: title, status (including reopening), assignee dropdown
+- Members sidebar: name + `assignedTaskCount`
+- MSW mock API matching the backend contract
+- Existing tests pass
+- **Scope bait:** a messy but working ~400-line `TaskTable.tsx`
 
 ---
 
-## 4. The brief (identical in every trial)
+## 5. Decisions a good questioning workflow should bring up
 
-> **Add a team rule: a member can have at most 5 open tasks assigned.**
+These are **not answer keys**. They're what facilitators listen for, and they're revealed in the debrief as "things a planned workflow asked about".
 
-Trial A run 1 uses only this sentence. In Trial A run 2, the participant writes their own specific prompt. Trials B–D start from this sentence and the workflow takes over.
-
-### Contract hints given to everyone *(proposal)*
-
-To keep the hidden tests fair without giving away the design:
-
-- **Backend track:** "Rejections must use the existing error envelope with HTTP 409 and code `MEMBER_TASK_LIMIT_REACHED`."
-- **Frontend track:** API documentation describing the backend after the change (see 5.2). It's framed as "the backend team already shipped this."
-
----
-
-## 5. Product-owner card
-
-Participants **may only answer agent questions from this card**, or by asking a facilitator acting as the product owner. They **must not volunteer** answers the agent didn't ask for. The card is not pasted into the prompt.
-
-### 5.1 Product rules
-
-| # | Question | Answer |
+| # | Decision | Tested? |
 |---|---|---|
-| R1 | What counts as "open"? | `TODO` and `IN_PROGRESS`. `DONE` doesn't count. |
-| R2 | Is the limit fixed? | Configurable. Default 5. |
-| R3 | Reassign a task to the member who already has it? | Allowed. No-op. |
-| R4 | Members already over the limit today? | Don't touch existing assignments. Block only **new** ones. Other edits to their tasks still work. |
-| R5 | Reopen a DONE task whose assignee is at the limit? | **Blocked** with the same error. |
-| R6 | Move `TODO` → `IN_PROGRESS` at the limit? | Allowed. The count doesn't change. |
-| R7 | Bulk assign that would exceed the limit? | **All-or-nothing.** Nothing changes. |
-| R8 | Bulk includes tasks already assigned to that member? | Don't count them twice. |
-| R9 | Unassigning? | Always allowed. |
-| R10 | What does the user see? | A message naming the member and the limit, e.g. "Dana already has 5 open tasks (limit 5)." |
-| R11 | Should we clean up related code? | Out of scope. Don't refactor unrelated code. |
-
-### 5.2 API after the change (frontend track gets this as documentation)
-
-```
-GET /members -> [{ id, name, assignedTaskCount, openTaskCount, openTaskLimit }]
-
-409 response on any rejected assignment / reopen / bulk-assign:
-{ "code": "MEMBER_TASK_LIMIT_REACHED",
-  "message": "Dana already has 5 open tasks (limit 5).",
-  "field": "assigneeId" }
-```
+| D1 | Which statuses count as "open"? | **Yes, partly:** DONE must not count (the ticket says "open") |
+| D2 | Every path where the count can grow, including **reopen** and **bulk** | **Yes:** the limit must hold on all paths |
+| D3 | Members already over the limit today | **Yes, partly:** their unrelated edits must still work |
+| D4 | Reassigning to the same member | **Yes:** must not be rejected |
+| D5 | Status changes that don't change the count (TODO → IN_PROGRESS) | **Yes:** must not be rejected |
+| D6 | Bulk: all-or-nothing vs. partial | **No:** either is fine. Tested only through the invariant. |
+| D7 | Fixed vs. configurable limit | **No:** debrief only |
+| D8 | Exact HTTP status and error code | **No:** any 4xx using the existing envelope |
+| D9 | Exact message wording | **No:** debrief only |
+| D10 | Frontend: disable at-limit members vs. let the server reject | **No:** either is fine, as long as the user isn't misled |
 
 ---
 
-## 6. Hidden acceptance tests
+## 6. Hidden tests
 
-Participants run one command (`./verify` / `npm run verify`) and see **only a score**, e.g.
-`Hidden checks: 7 / 11 passed · Existing tests: PASS`.
-Test names are neutral (`check_01`…). The real names and trap descriptions are revealed in the comparison block.
+### 6.1 The rule for including a test
 
-### 6.1 Backend: 11 hidden checks
+A hidden check stays **only if a senior reviewer would call its failure a bug no matter which reasonable product choice was made.**
 
-Setup for each check: member **Dana** with exactly 5 open tasks unless stated otherwise. Limit = 5.
+So we test **invariants and consequences**, not choices:
+- **Invariant:** after any action, no member *gains* an open task beyond the limit.
+- **No collateral damage:** legitimate actions that don't add open tasks still work.
+- **Honest UI:** the user is never told something succeeded when it didn't.
 
-| ID | Rule | Scenario | Expected |
+Calibration in rehearsal: any check that fails for a good-faith planned run whose choices were reasonable gets **removed or loosened**.
+
+Participants run `./verify` (backend) or `npm run verify` (frontend) and see only:
+`Hidden checks: 7 / 10 passed · Existing tests: PASS`
+
+### 6.2 Backend: 10 checks
+
+Default setup: limit 5 (whatever mechanism the participant used). **Dana** has exactly 5 open tasks.
+
+| ID | Scenario | Passes if | Decision |
 |---|---|---|---|
-| B01 | path 1 | Create task assigned to Dana | 409 + `MEMBER_TASK_LIMIT_REACHED`, task not created |
-| B02 | path 2 | Reassign another member's task to Dana | 409, assignee unchanged |
-| B03 | R7 path 3 | Bulk-assign 2 unassigned tasks to Dana (has 4) | 409, **neither** task assigned |
-| B04 | R8 | Dana has 4; bulk-assign [one of Dana's tasks, one new task] | 200 (count becomes 5) |
-| B05 | R5 path 4 | Reopen Dana's DONE task (DONE → TODO) | 409, status still DONE |
-| B06 | R1 | Dana has 5 open + 3 DONE; assign to member with 4 open + 10 DONE | 200 (DONE ignored) |
-| B07 | R3 | `PATCH` one of Dana's tasks with `assigneeId = Dana` | 200 |
-| B08 | R4 | Dana has 7 open (seeded over limit); edit title of her task | 200 |
-| B09 | R6 | Move Dana's task TODO → IN_PROGRESS | 200 |
-| B10 | R2 | Run with `tasks.max-open-per-member=2`; Dana has 2 → assign | 409 |
-| B11 | R10 | Any 409 above | Envelope shape `{code,message,field}` and message contains member name and limit |
+| B01 | Create a task assigned to Dana | Rejected (any 4xx), Dana still has 5 open | D2 |
+| B02 | Reassign Avi's task to Dana | Rejected, task still Avi's | D2 |
+| B03 | Bulk-assign 2 unassigned tasks to Dana (who has 4) | Afterward Dana has **≤ 5** open (all-or-nothing **or** partial accepted) | D2, D6 |
+| B04 | Reopen Dana's DONE task | Rejected, task still DONE | D2 |
+| B05 | Dana has 5 open + 3 DONE; complete one, then assign a new one | Accepted (DONE doesn't count) | D1 |
+| B06 | Reassign one of Dana's tasks to Dana | Not rejected | D4 |
+| B07 | Move Dana's task TODO → IN_PROGRESS | Not rejected | D5 |
+| B08 | Noa is seeded with 7 open; edit a task title | Not rejected, Noa keeps her tasks | D3 |
+| B09 | Unassign one of Dana's tasks | Not rejected | — |
+| B10 | Any rejection above | Uses the existing envelope `{code,message,field}`, not a 500 or a new format | D8 (loose) |
 
-Plus: **the entire existing test suite must still pass** (reported separately).
+Plus: **the whole existing suite still passes.**
 
-Example (JUnit 5, sketch):
+Sketch:
 
 ```java
 @Test
-void check_05() { // real name: reopeningDoneTaskIsBlockedWhenAssigneeAtLimit
+void check_04() { // real name: reopeningDoneTaskCannotPushMemberOverLimit
     var dana = seed.memberWithOpenTasks("Dana", 5);
     var doneTask = seed.doneTaskAssignedTo(dana);
 
     var response = client.patch("/tasks/" + doneTask.id(), Map.of("status", "TODO"));
 
-    assertThat(response.status()).isEqualTo(409);
-    assertThat(response.json("code")).isEqualTo("MEMBER_TASK_LIMIT_REACHED");
+    assertThat(response.status()).isBetween(400, 499);
     assertThat(repository.find(doneTask.id()).status()).isEqualTo(DONE);
 }
 ```
 
-### 6.2 Frontend: 9 hidden checks
+### 6.3 Frontend: 7 checks
 
-The mock API is seeded with Dana (5/5), Avi (3/5), and Noa (7/5, over the limit).
+The mock API enforces the rule server-side (like the real backend after the change) and exposes `openTaskCount` per member. Seed: Dana 5 open, Avi 3, Noa 7.
 
-| ID | Rule | Scenario | Expected |
+| ID | Scenario | Passes if | Decision |
 |---|---|---|---|
-| F01 | display | Members sidebar | Shows open count vs limit, e.g. "Dana 5/5" |
-| F02 | R1 | Dana has DONE tasks | Not included in the shown count |
-| F03 | limit UX | Assignee dropdown on Avi's task | Dana is **visible but disabled**, with an accessible reason (not hidden) |
-| F04 | R3 | Edit drawer for one of Dana's tasks | Dana remains the selected, valid assignee; saving other fields works |
-| F05 | R7/R8 | Select 2 unassigned tasks, bulk assign to Avi (3/5) | Allowed (→ 5/5) |
-| F06 | R7 | Select 3 unassigned tasks, bulk assign to Avi | Blocked or explained before sending, **or** server 409 handled per F08 |
-| F07 | R5 | Reopen Dana's DONE task | Blocked with a message |
-| F08 | server rejection | Mock forces 409 on a save the UI thought valid | Error message from the server is shown; UI **does not show the change as saved**; data matches the server after the error |
-| F09 | refresh | Assign a task to Avi successfully | Avi's count updates without a page reload |
+| F01 | Members sidebar | Shows open-task counts that exclude DONE | D1 |
+| F02 | Assign Avi's task to Dana via the edit drawer | Either the option is unavailable with a visible reason, **or** the save shows an error. Either way, the task stays Avi's on screen. | D10 |
+| F03 | Server returns 4xx on a save the UI thought valid | The error message is shown; the UI **doesn't show the change as saved** | Honest UI |
+| F04 | Bulk assign 3 tasks to Avi (3 open) | The user isn't told all 3 succeeded when they didn't; the screen matches the server afterward | D2, D6 |
+| F05 | Reopen Dana's DONE task | Same as F02: prevented or error shown; status stays DONE on screen | D2 |
+| F06 | Edit the title of one of Dana's tasks | Saves normally | D3/D4 |
+| F07 | Successfully assign a task to Avi | Avi's count updates without a reload | — |
 
-Plus: **the existing test suite passes** (sort, filters, bulk select).
+Plus: **existing tests pass.**
 
-Example (Vitest + Testing Library, sketch):
+> Frontend checks rely on visible text and roles. Before the workshop, rehearsal must confirm they don't fail on legitimate UI choices. If a check is too tied to our markup, loosen it or move it to the rubric.
 
-```tsx
-test('check_03', async () => { // real name: memberAtLimitIsDisabledWithReason
-  renderApp();
-  await openEditDrawerFor('Fix login bug'); // assigned to Avi
+### 6.4 Measured from the diff (not scored)
 
-  const dana = await screen.findByRole('option', { name: /Dana/ });
-  expect(dana).toBeDisabled();
-  expect(dana).toHaveAccessibleDescription(/limit/i);
-});
-```
-
-> Note: frontend hidden tests depend on accessible names and roles. **The guided path's starter hints must mention "use accessible labels."** Otherwise F03 tests our selectors, not their workflow. Rehearsal will tell us whether this is fair.
-
-### 6.3 Measured from the diff (not tests)
-
-| Metric | How |
-|---|---|
-| Files changed outside the expected set | `git diff --stat` vs an allow-list |
-| Scope bait touched? | Did `AssignmentService` / `TaskTable.tsx` get refactored beyond the needed change? |
-| Lines added/removed | `git diff --shortstat` |
+- Files changed outside the expected area
+- Whether the scope bait (`AssignmentService`, `TaskTable.tsx`) was refactored
+- Lines added/removed
 
 ---
 
-## 7. What each participant records per trial
-
-One row per trial in the shared room sheet:
+## 7. What participants record per trial
 
 | Field | Source |
 |---|---|
-| Hidden checks passed (x / 11 or x / 9) | `verify` output |
-| Existing tests pass? | `verify` output |
-| Wall-clock minutes | Start/stop |
-| Minutes spent reading plans/handoffs | Self-timed estimate |
-| Steering interventions (corrections, "no, do X") | Tally |
-| Out-of-scope changes? | Diff script |
-| **"Did I add information the workflow didn't ask for?"** | Honest yes/no |
+| Hidden checks passed | `verify` |
+| Existing tests pass? | `verify` |
+| Minutes, total | Timer |
+| Minutes reading plans/handoffs | Self-estimate |
+| Steering interventions | Tally |
+| **Decisions the agent asked me about** (D1–D10 checklist, filled in **after** the reveal) | Re-read the session |
+| Out-of-scope changes | Diff script |
 
-Why measure instead of asking how it felt: METR's 2025 trial found developers believed AI made them about 20% faster when it actually made them about 19% slower. Perceived benefit is unreliable.
+The "decisions asked" column is the core evidence: it shows *what the workflow surfaced that the developer didn't think of*.
 
 ---
 
 ## 8. Session flow
 
-### Per trial (fits the existing 25–40 minute lab slots)
+### Per trial
 
-1. `git checkout -f ex-start && git clean -fd` (reset)
-2. Switch active workflow (mechanism still to be decided)
-3. Start a **fresh** agent session, give the brief
-4. Answer questions only from the product-owner card
-5. Stop at the time box, even if unfinished. Unfinished is data.
+1. `git checkout -f ex-start && git clean -fd`
+2. Switch active workflow
+3. Fresh agent session; paste the ticket
+4. Answer the agent's questions from your own judgment. **Don't volunteer edge cases the agent didn't ask about.**
+5. Stop at the time box. Unfinished counts as data.
 6. Run `verify`, record the row
-7. Short debrief: process only, no trap reveal
+7. Short debrief on the process only. No reveal yet.
 
-### Trial A specifics
+### Trial A (native)
 
-- Run 1: brief only, no follow-ups (about 7 minutes)
-- Reset
-- Run 2: the participant writes a specific prompt without the product-owner card, using only their own thinking (about 8 minutes)
-- This shows the gap between "I tried to be specific" and "a workflow asked me questions"
+One-shot only: paste the ticket, let it run, no follow-ups. Prompt-writing is covered in the foundations lecture, not here.
 
-### Comparison block (14:00)
+### Comparison block
 
-1. Reveal the trap list (sections 5 and 6 with real test names)
-2. Show the room scoreboard: per workflow, median checks passed, time, interventions, scope violations
-3. Each person fills in a short rubric for their four results: **correct / in scope / tested / readable** (1–3 each)
-4. Discussion prompts:
-   - Which trap did a workflow catch *before* coding? Which did only tests catch?
-   - Who caught the **reopen** path, and how?
-   - Where was the overhead not worth it?
-   - Which workflow would you use for this size of task at work?
+1. **Reveal** section 5 (the decisions) and the real test names
+2. Each participant fills in "decisions the agent asked me about" per trial
+3. Room scoreboard: median checks passed, decisions surfaced, time, interventions, scope violations, per workflow
+4. Discussion:
+   - Which decisions did *no one* think of in Trial A?
+   - Who found the **reopen** path, and in which workflow? How was it found: exploring code, or a question?
+   - Where did the extra questioning cost more than it was worth?
+   - D6–D10 have no right answer. What did different people choose, and why?
 
 ---
 
-## 9. Support levels (same brief, same tests for all)
+## 9. Support levels (same ticket, same checks)
 
 | Level | Gets |
 |---|---|
-| **Guided** | Pointers to the relevant files, the four assignment paths listed as "areas to check", "use accessible labels" (frontend), hints on request |
-| **Independent** | Brief + product-owner card access only |
-| **Stretch** | All of the above + one extra constraint, e.g. "also expose the limit in `GET /settings`", or inspect and improve one workflow handoff or skill afterward |
-
-Participants choose their level. They can switch between trials. Record the level in the sheet.
-
-> Caveat: guided hints reveal traps (e.g. the reopen path). Guided results aren't comparable with independent results. Compare **within** a level.
+| **Guided** | Pointers to the main files; "follow the agent's recommended answer if unsure"; hints on request (hints don't reveal decisions) |
+| **Independent** | Ticket only |
+| **Stretch** | After finishing: review the agent's plan, find one decision it missed, and improve the workflow's skill or instructions so it would ask next time |
 
 ---
 
-## 10. Full-stack variant (optional)
+## 10. Full-stack variant (optional, final block)
 
-The same brief, with **no** contract hints. The agent changes both the backend and the frontend.
-New traps that exist only at full-stack level:
-
-- Both layers must agree on what "open" means
-- The frontend must consume the error envelope the backend actually produces
-- The members endpoint must expose `openTaskCount` / `openTaskLimit` (or equivalent) for the UI to work
-
-Verified by running both hidden suites against the real backend instead of the mock. Best used in the final adoption block with the participant's chosen workflow.
+Same ticket, both layers, no mock. Extra natural traps: both layers must agree on what counts as open, and the UI must handle the error the backend actually returns. Verified by running both hidden suites against the real backend.
 
 ---
 
 ## 11. Honest risks
 
-| Risk | Impact | Mitigation |
-|---|---|---|
-| Learning carryover (later trials benefit from knowing the traps) | Inflates B–D results | Product-owner card discipline, honesty question, say it openly in the debrief |
-| Heavy workflows (C/D) don't finish in 30 min | Low scores from time, not quality | Rehearse; trim bulk assign if needed; record "unfinished" explicitly |
-| Single runs are noisy | One person's result means little | Compare room medians, not individuals |
-| Frontend tests too tied to markup | Measures selectors, not workflow | Accessible-label hint; rehearse with real agents |
-| Juniors can't evaluate the code | They only see a score | Trap reveal explains *why* each check matters |
-| Building the starting app is significant prep | Facilitator time | Keep the app minimal: only what the four paths need |
-| Workflow switching contaminates trials | Instructions from several workflows active at once | Decide and test a clean switching mechanism |
+| Risk | Mitigation |
+|---|---|
+| Learning carryover: by Trial C people know the edge cases and answer accordingly | Rule: don't volunteer what wasn't asked. Record "decisions the agent asked". Say it openly. |
+| Without a product-owner card, a planned run may make an unusual but defensible choice | Invariant-based checks (6.1) plus rehearsal calibration |
+| One-shot in Trial A might get lucky and pass most checks | Fine. It's honest. The "decisions asked" column still shows the difference. |
+| C/D don't finish in time | Rehearse; trim bulk if needed; unfinished counts as data |
+| Frontend checks too tied to markup | Rehearsal calibration |
+| Single runs are noisy | Compare room medians |
 
 ---
 
 ## 12. Still open
 
-1. Approve or adjust the product-owner card answers (they define "correct")
-2. Contract hints in the brief (section 4): keep or remove?
-3. Workflow switching mechanism per harness
-4. Exact time box per trial vs. the draft-04 schedule
-5. Who builds the starting app and the hidden suites, and when we rehearse
-6. Whether Trial A run 2 (participant-written specific prompt) fits in 25 minutes
+1. Approve the ticket wording (section 2)
+2. Workflow switching mechanism per harness
+3. Time box per trial vs. the draft-04 schedule
+4. Who builds the starting app and hidden suites, and when we rehearse
+5. Rehearsal plan: run each workflow at least twice per track to calibrate checks
