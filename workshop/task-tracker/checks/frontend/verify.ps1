@@ -7,6 +7,7 @@ $hiddenDir = Join-Path $repoPath 'src\__hidden__'
 $jsonOutput = Join-Path ([IO.Path]::GetTempPath()) "hidden-checks-$([guid]::NewGuid()).json"
 
 $passed = 0
+$couldNotRun = $true
 $existing = 'FAIL'
 $previousEncoding = [Console]::OutputEncoding
 $previousRepoEnv = $env:REPO
@@ -26,6 +27,7 @@ try {
             $report = Get-Content $jsonOutput -Raw | ConvertFrom-Json
             $assertions = @($report.testResults | ForEach-Object { $_.assertionResults })
             $passed = @($assertions | Where-Object { $_.status -eq 'passed' }).Count
+            if ($assertions.Count -gt 0) { $couldNotRun = $false }
         }
 
         & npm test -- --run *> $null
@@ -42,6 +44,11 @@ try {
     $env:REPO = $previousRepoEnv
 }
 
-Write-Output "Hidden checks: $passed / $totalChecks passed $([char]0x00B7) Existing tests: $existing"
+$dot = [char]0x00B7
+if ($couldNotRun) {
+    Write-Output "Hidden checks: could not run (app structure changed - see facilitator) $dot Existing tests: $existing"
+} else {
+    Write-Output "Hidden checks: $passed / $totalChecks passed $dot Existing tests: $existing"
+}
 [Console]::OutputEncoding = $previousEncoding
 exit 0

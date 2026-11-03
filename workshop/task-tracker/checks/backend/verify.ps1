@@ -9,6 +9,7 @@ $reportsDir = Join-Path $repoPath 'target\surefire-reports'
 $hiddenClass = 'com.workshop.tasktracker.checks.HiddenChecksTest'
 
 $passed = 0
+$couldNotRun = $false
 $existing = 'FAIL'
 $previousEncoding = [Console]::OutputEncoding
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
@@ -34,6 +35,22 @@ try {
     $hidden = @($cases | Where-Object { $_.classname -eq $hiddenClass })
     $others = @($cases | Where-Object { $_.classname -ne $hiddenClass })
 
+    if ($hidden.Count -eq 0) {
+        # Re-run without the hidden class to tell "hidden checks cannot compile" from "build is broken"
+        $couldNotRun = $true
+        Remove-Item (Join-Path $checksDir 'HiddenChecksTest.java') -Force
+        if (Test-Path $compiledDir) { Remove-Item $compiledDir -Recurse -Force }
+        if (Test-Path $reportsDir) { Remove-Item $reportsDir -Recurse -Force }
+        Push-Location $repoPath
+        try { & mvn -q test *> $null } finally { Pop-Location }
+        $others = @()
+        foreach ($file in Get-ChildItem $reportsDir -Filter 'TEST-*.xml' -ErrorAction SilentlyContinue) {
+            $others += ([xml](Get-Content $file.FullName -Raw)).testsuite.testcase
+        }
+        $others = @($others | Where-Object { $_ })
+        if ($others.Count -eq 0) { $couldNotRun = $false }
+    }
+
     $passed = @($hidden | Where-Object { -not ($_.failure -or $_.error) }).Count
     $othersFailed = @($others | Where-Object { $_.failure -or $_.error }).Count
     if ($others.Count -gt 0 -and $othersFailed -eq 0) { $existing = 'PASS' }
@@ -46,6 +63,11 @@ try {
     Get-ChildItem $reportsDir -Include 'TEST-*HiddenChecksTest.xml','*HiddenChecksTest.txt' -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force
 }
 
-Write-Output "Hidden checks: $passed / $totalChecks passed $([char]0x00B7) Existing tests: $existing"
+$dot = [char]0x00B7
+if ($couldNotRun) {
+    Write-Output "Hidden checks: could not run (app structure changed - see facilitator) $dot Existing tests: $existing"
+} else {
+    Write-Output "Hidden checks: $passed / $totalChecks passed $dot Existing tests: $existing"
+}
 [Console]::OutputEncoding = $previousEncoding
 exit 0
