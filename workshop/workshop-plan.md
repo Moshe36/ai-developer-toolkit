@@ -2,6 +2,8 @@
 
 This file preserves the workshop brainstorming context so a future conversation can continue without repeating discovery. Read it before proposing changes. The workshop is still being designed; the schedule and exercises are not a finalized delivery package.
 
+**Canonical plan location:** `C:\Users\moshemoa\ai-developer-toolkit\workshop\workshop-plan.md`. The copy previously saved under Downloads is historical. Exercise design is progressing in a separate conversation; consult `exercises/workload-limit.md` for its current draft and approval status. Continue developing the teaching plan here, coordinating shared decisions rather than overwriting the exercise design.
+
 ## 1. Purpose and confirmed direction
 
 The user is preparing a practical AI workshop for their enterprise development team, co-facilitated with their friend Tom.
@@ -173,6 +175,100 @@ Current foundation proposal: **55 minutes**:
 2. **15 minutes:** useful prompts—goal, relevant context, boundaries, expected outcome, verification. Improve a vague request together.
 3. **20 minutes:** inspect actual instructions, a small skill, and an agent; explain scope, activation, and handoff context.
 4. **10 minutes:** direct execution versus planning versus clarification, checkpoints, verification, and preview of the four approaches.
+
+### Foundations facilitator outline — proposed teaching content
+
+**Slot:** 09:15–10:10, 55 minutes. This expands the existing budget; it does not add time to the day. The user requested detailed planning of this block. The following teaching content is a draft for review, not a fully approved presenter script.
+
+**Learning outcome:** participants can describe what an agent is working from, give it a bounded task, recognize the purpose of reusable guidance, and identify evidence that the result is correct.
+
+Use real toolkit definitions and short demonstrations. One facilitator teaches while the other helps participants and observes confusion. Prepare short example outputs so live generation does not consume the teaching budget. Exact demo commands and harness-specific discovery steps require rehearsal.
+
+#### 09:15–09:25 — How agentic development works (10 minutes)
+
+- **Explain:** a model interprets available context and generates responses/tool requests; the harness supplies tools, configuration, permissions, and conversation management; context contains the information available for a response; a workflow organizes investigation, decisions, implementation, and verification.
+- **Show:** a short prepared interaction where the agent reads a relevant file, makes a bounded change, and runs an appropriate check. Identify what it actually inspected and what remained an assumption.
+- **Make explicit:** repository access is not equivalent to having read every file. An agent's completion message is a claim; inspected changes and verification results supply evidence.
+- **Understanding check:** ask what information the agent actually had when it made a decision.
+- **Takeaway:** give the agent relevant context and a clear objective, then inspect the evidence of what it did.
+
+#### 09:25–09:40 — Giving the agent a useful task (15 minutes)
+
+Teach a flexible task brief:
+
+1. **Goal:** what should change?
+2. **Context:** what should the agent know or inspect?
+3. **Boundaries:** what belongs in this task?
+4. **Success:** what observable outcome is required?
+5. **Verification:** how can that outcome be checked?
+
+Illustrative lecture example, separate from the participant exercise:
+
+> Improve this code. Use clean code and best practices.
+
+Compare it with:
+
+> Simplify the validation logic in this component while preserving its behavior and public interface. Read the existing implementation and tests first. Follow the surrounding conventions, keep changes focused on validation, and run the relevant checks. Report any behavior you could not verify.
+
+- Explain what each added detail contributes. This is a structure to adapt, not a magic prompt or a requirement to write a long specification for every task.
+- “Clean code” and similar phrases can influence output, but concrete expectations and examples reduce ambiguity.
+- Show short examples from `instructions/SHARED.md`: scope discipline, preserving surrounding conventions, domain-meaningful names, and verification.
+- Identify personal preferences as preferences; use actual project conventions when teaching project requirements.
+- **Participation:** ask which missing detail in a short request would most affect the outcome.
+- **Takeaway:** specify outcomes and constraints; let the agent investigate implementation details it can discover.
+
+#### 09:40–10:00 — Instructions, skills, and agents (20 minutes)
+
+**Instructions — 5 minutes**
+
+- Question answered: “What expectations apply to work here?”
+- Inspect a short excerpt from `instructions/SHARED.md`.
+- Explain personal/shared/project scope, the effect of conflicting guidance, and why instructions are guidance rather than a guarantee of enforcement.
+- Loading rules and precedence depend on the actual harness and configuration; demonstrate verified behavior rather than claiming universal rules.
+
+**Skills — 6 minutes**
+
+- Question answered: “How should this kind of task be handled?”
+- Inspect `skills/grill-me/skill.md`, then briefly show a stack-specific skill.
+- Point out when it applies, the procedure or guidance it supplies, and any supporting references.
+- Show that a useful skill can be short and that relevance to the team's stack matters more than accumulating generic advice.
+- Explain how someone could adapt an existing skill to a recurring need.
+
+**Agents and delegation — 6 minutes**
+
+- Question answered: “Which responsibility should this configured agent handle?”
+- Inspect a targeted reviewer definition, such as `agents/plan-reviewer.md`, after validating its workshop harness adaptation.
+- Explain responsibility, expected output, and any configured model, tools, or permissions.
+- Distinguish a custom agent configuration from a separately delegated subagent session. A subagent needs a bounded task and sufficient context; do not assume it knows the parent conversation.
+- The caller evaluates returned work and remains responsible for the overall outcome.
+
+**Understanding check — 3 minutes**
+
+- Ask where participants would place a repository-wide convention, a repeatable investigation procedure, and a bounded review responsibility.
+- Accept justified overlap. The aim is appropriate responsibility and scope, not memorizing rigid categories.
+- **Takeaway:** put reusable guidance where it is relevant and confirm that the intended guidance is available and used.
+
+#### 10:00–10:10 — Choosing the right amount of process (10 minutes)
+
+| Situation | Useful starting approach |
+|---|---|
+| Clear, small, local change | Direct execution with verification |
+| Unclear requirements or competing interpretations | Clarification first |
+| Known outcome requiring coordinated changes or dependencies | A short plan before implementation |
+| Repeated failure without new evidence | Stop, inspect, and change strategy |
+
+- Show how a useful plan resolves assumptions, identifies affected behavior and dependencies, defines a bounded implementation path, and names verification steps.
+- Contrast it with a generic list such as “analyze, implement, test.” Explain the decisions made, not merely the length of the plan.
+- Briefly introduce the four workflow trials and the participant comparison question: “For this task, what did the workflow help you notice or prevent, and what extra effort did it require?”
+- **Three closing reminders:** define the task; understand the guidance being applied; verify the result.
+
+#### Coordination with the parallel exercise design
+
+- Use a separate lecture demonstration to avoid revealing the exercise's held-back cases before its comparison block.
+- The current exercise draft repeats the same ticket, uses a constrained one-shot native trial, and delays revealing detailed checks. Earlier plan text proposed independent variants, a more flexible native trial, and explicit participant acceptance checks. Reconcile these delivery choices with the exercise session before finalizing participant instructions; do not silently treat both designs as equivalent.
+- Describe the constrained native trial accurately if adopted: it measures that starting approach, not the full capability of the native harness.
+- Repeated exposure and different amounts of interaction affect comparisons. Present results as learning evidence; do not attribute every improvement to the workflow alone.
+- The exercise draft is the current place for task details and its open decisions. This outline specifies what participants should understand before starting it.
 
 Proposed lab pattern: short demonstration → individual practice → brief debrief.
 
@@ -369,8 +465,8 @@ Completed:
 
 Not yet done:
 
-- Core exercise **designed (draft, not built)**: the "Workload Limit" user story, with backend and frontend tracks, the same task run with each of the four workflows, a product-owner card, and hidden acceptance tests. See `exercises/workload-limit.md`. The starting app and hidden test suites are not built yet.
-- No detailed lecture script, presentation deck, participant workbook, or facilitator guide produced.
+- Core exercise **designed (draft, not built)**: the "Workload Limit" user story, with backend and frontend tracks, the same task run with each of the four workflows, and hidden acceptance checks. The inspected v2 draft removes the product-owner card and asks participants to answer clarification questions using their judgment. See `exercises/workload-limit.md` for the latest decisions. The starting app and hidden test suites are not built yet.
+- A timed foundations facilitator outline is now drafted in section 7. A full workshop deck now exists: `workshop/agentic-workshop.pptx` (75 slides after the second pass; the user filters, English, speaker notes on every slide, amber PLACEHOLDER boxes for screenshots and demos still to add). The second pass added: the main-idea slides (agentic coding is still software engineering; old principles mapped to agentic practice), a buzzwords section, and material restored from the original deck (LLM basics, prompt principles, instructions/skills screenshots, writing skills with AI, plugins, a team of agents, spec-driven development, Mermaid, toolbox: right tool per job, Microsoft 365 Copilot, CLI and IDE chat, AI commit messages, AI-made presentations) plus its memes. It was rebuilt from the original 3-hour deck (`Downloads/מצגת להעביר בעבודה (1).pptx`, left unchanged), with context-window and token slides corrected from web research, Superpowers described from its current repository, and thinking mode removed at the user's request. Generator script: `%TEMP%\opencode\deck-build\build-deck.js`.
 - No enterprise adaptation of the setup script implemented.
 - No workflow switching mechanism selected or tested.
 - No integration installation, model comparison experiment, or workflow rehearsal performed.
@@ -380,13 +476,13 @@ Not yet done:
 
 ## 12. Open decisions and next useful work
 
-The user has agreed how to support students through seniors and asked to record that decision. The current schedule remains draft 04; the mixed-experience approach in section 7 is a newer agreed requirement awaiting incorporation into the HTML and detailed exercises.
+The canonical plan is now this repository file. The user is developing the exercise in another session while this conversation continues the teaching plan. The current schedule remains draft 04; section 7 now includes the agreed mixed-experience approach and the proposed 55-minute foundations outline. The HTML has not yet been synchronized with these additions.
 
 Useful next steps, without assuming they are already approved:
 
 1. Review the current timing balance and confirm coffee start (08:00 or 08:30).
-2. Design small, representative React and Java exercises with guided, independent, and stretch support plus explicit acceptance checks. No concrete task examples have been supplied by the user; the assistant's task-list filtering example is illustrative, not approved exercise content.
-3. Build the foundation teaching material with a worked example that makes planning and verification benefits visible, alongside actual prompt, instruction, skill, and agent examples. Update the HTML to reflect this agreed approach within the existing time budget.
+2. Coordinate the teaching plan with the parallel `exercises/workload-limit.md` draft, including participant support, visible verification guidance, held-back checks, trial interaction rules, and repeated-task learning effects. Exercise content and implementation progress belong to that design effort.
+3. Review and develop the foundations outline in section 7 into presenter-ready explanations and demonstrations using toolkit files. Choose a lecture example distinct from the participant task. Update the HTML after the teaching outline is agreed, within the existing time budget.
 4. Define which Copilot IDE/CLI interfaces are supported and rehearse all four workflows in both harness paths.
 5. Specify enterprise setup sources/paths and how to switch active workflows cleanly.
 6. Pilot the exercises and adjust scope or timing based on measured completion and verification time.
