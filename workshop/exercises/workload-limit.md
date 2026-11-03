@@ -176,7 +176,7 @@ The mock API enforces the rule server-side (like the real backend after the chan
 | F02 | Assign Avi's task to Dana via the edit drawer | Either the option is unavailable with a visible reason, **or** the save shows an error. Either way, the task stays Avi's on screen. | D10 |
 | F03 | Server returns 4xx on a save the UI thought valid | The error message is shown; the UI **doesn't show the change as saved** | Honest UI |
 | F04 | Bulk assign 3 tasks to Avi (3 open) | The user isn't told all 3 succeeded when they didn't; the screen matches the server afterward | D2, D6 |
-| F05 | Reopen Dana's DONE task | Same as F02: prevented or error shown; status stays DONE on screen | D2 |
+| F05 | Reopen Dana's DONE task | Same as F02: the reopen option (TODO/IN_PROGRESS) is unavailable **with a visible limit message**, or the save shows a new limit error. Status stays DONE on screen | D2 |
 | F06 | Edit the title of one of Dana's tasks | Saves normally | D3/D4 |
 | F07 | Successfully assign a task to Avi | Avi's count updates without a reload | — |
 

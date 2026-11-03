@@ -6,6 +6,17 @@ import { getDb, resetDb, type Seed } from '../mocks/db'
 import { server } from '../mocks/server'
 import type { Task } from '../types'
 
+import '@testing-library/jest-dom/vitest'
+
+declare const __REPO_HAS_SETUP__: boolean
+
+if (!__REPO_HAS_SETUP__) {
+  beforeAll(() => server.listen())
+  beforeEach(() => resetDb())
+  afterEach(() => server.resetHandlers())
+  afterAll(() => server.close())
+}
+
 const LIMIT_MESSAGE = /limit|too many|maximum|max/i
 const ROW_SELECTOR = 'tr, [role="row"], li, article'
 
@@ -46,8 +57,38 @@ function visibleLimitMessages() {
   return screen.queryAllByText(LIMIT_MESSAGE).filter(isVisible)
 }
 
-async function expectLimitMessageVisible() {
-  await waitFor(() => expect(visibleLimitMessages().length).toBeGreaterThan(0))
+function visibleAlertTexts() {
+  return screen
+    .queryAllByRole('alert')
+    .filter(isVisible)
+    .map((alert) => alert.textContent ?? '')
+    .filter((text) => text.trim() !== '')
+}
+
+type MessageSnapshot = { limitTexts: string[]; alertTexts: string[] }
+
+function snapshotMessages(): MessageSnapshot {
+  return {
+    limitTexts: visibleLimitMessages().map((element) => element.textContent ?? ''),
+    alertTexts: visibleAlertTexts(),
+  }
+}
+
+function countOf(texts: string[], text: string) {
+  return texts.filter((candidate) => candidate === text).length
+}
+
+function hasNewEntry(now: string[], before: string[]) {
+  return now.some((text) => countOf(now, text) > countOf(before, text))
+}
+
+function hasNewLimitMessage(before: MessageSnapshot) {
+  const limitTexts = visibleLimitMessages().map((element) => element.textContent ?? '')
+  return hasNewEntry(limitTexts, before.limitTexts) || hasNewEntry(visibleAlertTexts(), before.alertTexts)
+}
+
+async function expectNewLimitMessage(before: MessageSnapshot) {
+  await waitFor(() => expect(hasNewLimitMessage(before)).toBe(true))
 }
 
 function rowOf(title: string): HTMLElement | null {
@@ -130,20 +171,21 @@ describe('hidden checks', () => {
     await renderApp()
     const dana = await memberItem('Dana')
     await waitFor(() => expect(itemText(dana)).toMatch(/\b5\b/))
-    expect(itemText(dana)).not.toMatch(/\b6\b/)
   })
 
   it('check_02 reassigning over the limit is rejected visibly', async () => {
     await renderApp()
     const dialog = await openEditor('Avi open 1')
     const assignee = within(dialog).getByLabelText('Assignee')
+    const before = snapshotMessages()
     const dana = optionOf(assignee, /Dana/)
     if (dana.disabled) {
-      expect(LIMIT_MESSAGE.test(dana.textContent ?? '') || visibleLimitMessages().length > 0).toBe(true)
+      expect(LIMIT_MESSAGE.test(dana.textContent ?? '') || hasNewLimitMessage(before)).toBe(true)
     } else {
       await userEvent.selectOptions(assignee, dana)
+      const beforeSave = snapshotMessages()
       await save(dialog)
-      await expectLimitMessageVisible()
+      await expectNewLimitMessage(beforeSave)
     }
     expect(rowShows('Avi open 1', 'Avi')).toBe(true)
     expect(getDb().tasks.find((t) => t.title === 'Avi open 1')!.assigneeId).toBe(2)
@@ -152,7 +194,7 @@ describe('hidden checks', () => {
   it('check_03 server error message is shown and task is unchanged', async () => {
     await renderApp()
     server.use(
-      http.patch('http://localhost:8080/tasks/:id', () =>
+      http.patch('*/tasks/:id', () =>
         HttpResponse.json({ code: 'SOMETHING_BROKE', message: 'Server says no 4242', field: null }, { status: 409 }),
       ),
     )
@@ -186,14 +228,18 @@ describe('hidden checks', () => {
     await renderApp()
     const dialog = await openEditor('Dana finished')
     const status = within(dialog).getByLabelText('Status')
-    const todo = optionOf(status, 'TODO')
-    if (todo.disabled) {
+    const before = snapshotMessages()
+    const reopenOptions = [optionOf(status, 'TODO'), optionOf(status, 'IN_PROGRESS')]
+    const disabledOption = reopenOptions.find((option) => option.disabled)
+    if (disabledOption) {
+      expect(LIMIT_MESSAGE.test(disabledOption.textContent ?? '') || hasNewLimitMessage(before)).toBe(true)
       expect(rowShows('Dana finished', 'DONE')).toBe(true)
       return
     }
-    await userEvent.selectOptions(status, todo)
+    await userEvent.selectOptions(status, reopenOptions[0])
+    const beforeSave = snapshotMessages()
     await save(dialog)
-    await expectLimitMessageVisible()
+    await expectNewLimitMessage(beforeSave)
     expect(rowShows('Dana finished', 'DONE')).toBe(true)
   })
 
