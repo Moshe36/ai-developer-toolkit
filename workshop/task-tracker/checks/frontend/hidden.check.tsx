@@ -93,6 +93,28 @@ function optionOf(select: HTMLElement, name: RegExp | string) {
   return within(select).getByRole('option', { name }) as HTMLOptionElement
 }
 
+function waitForBulkAssignResponse() {
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      server.events.removeListener('response:mocked', onResponse)
+      reject(new Error('bulk-assign request was never made'))
+    }, 5000)
+    const onResponse = ({ request }: { request: Request }) => {
+      if (!request.url.endsWith('/tasks/bulk-assign')) return
+      clearTimeout(timer)
+      server.events.removeListener('response:mocked', onResponse)
+      resolve()
+    }
+    server.events.on('response:mocked', onResponse)
+  })
+}
+
+function expectRowsMatchStoredAviTasks() {
+  const titles = (predicate: (task: Task) => boolean) =>
+    getDb().tasks.filter(predicate).map((t) => t.title).sort()
+  expect(titles((t) => rowShows(t.title, 'Avi'))).toEqual(titles((t) => t.assigneeId === 2))
+}
+
 async function memberItem(name: string) {
   const sidebar = await screen.findByRole('complementary', { name: 'Members' })
   const label = await within(sidebar).findByText(new RegExp(name))
@@ -150,23 +172,16 @@ describe('hidden checks', () => {
     const select = screen.getByLabelText('Assign selected to')
     const avi = optionOf(select, 'Avi')
     if (!avi.disabled) {
+      const bulkResponded = waitForBulkAssignResponse()
       await userEvent.selectOptions(select, avi)
       await userEvent.click(screen.getByRole('button', { name: 'Assign' }))
+      await bulkResponded
+      await sleep(300)
     }
-    await sleep(400)
-    await waitFor(() => {
-      const shownAsAvi = getDb()
-        .tasks.filter((t) => rowShows(t.title, 'Avi'))
-        .map((t) => t.title)
-        .sort()
-      const storedAsAvi = getDb()
-        .tasks.filter((t) => t.assigneeId === 2)
-        .map((t) => t.title)
-        .sort()
-      expect(shownAsAvi).toEqual(storedAsAvi)
-    })
+    await waitFor(expectRowsMatchStoredAviTasks)
+    await sleep(300)
+    expectRowsMatchStoredAviTasks()
   })
-
   it('check_05 DONE task cannot be reopened past the limit', async () => {
     await renderApp()
     const dialog = await openEditor('Dana finished')
@@ -199,3 +214,4 @@ describe('hidden checks', () => {
     await waitFor(async () => expect(itemText(await memberItem('Avi'))).toMatch(/\b4\b/))
   })
 })
+
