@@ -47,10 +47,10 @@ cd <Root>\task-tracker-<track>; git checkout -f ex-start; git clean -fd
 ## Applying a solution (rehearsal / checks calibration)
 
 ```powershell
-.\solution\apply.ps1 -Overlay backend -Repo <Root>\task-tracker-backend
+.\solution\apply.ps1 -Overlay .\solution\backend -Repo <Root>\task-tracker-backend
 ```
 
-Overlays: `backend`, `backend-partial`, `frontend`, `frontend-server-only`. Reset afterwards with the command above.
+Overlays (pass as `.\solution\<name>`; a bare name resolves against the current directory and copies the starting app): `backend`, `backend-partial`, `frontend`, `frontend-server-only`. Reset afterwards with the command above.
 
 ## Troubleshooting
 
