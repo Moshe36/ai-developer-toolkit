@@ -25,7 +25,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class HiddenChecks {
+class HiddenChecksTest {
 
     @Autowired MockMvc mockMvc;
     @Autowired MemberRepository memberRepository;

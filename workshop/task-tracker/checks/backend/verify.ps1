@@ -6,20 +6,21 @@ $repoPath = (Resolve-Path $Repo).Path
 $checksDir = Join-Path $repoPath 'src\test\java\com\workshop\tasktracker\checks'
 $compiledDir = Join-Path $repoPath 'target\test-classes\com\workshop\tasktracker\checks'
 $reportsDir = Join-Path $repoPath 'target\surefire-reports'
-$hiddenClass = 'com.workshop.tasktracker.checks.HiddenChecks'
+$hiddenClass = 'com.workshop.tasktracker.checks.HiddenChecksTest'
 
 $passed = 0
 $existing = 'FAIL'
+$previousEncoding = [Console]::OutputEncoding
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
 
 try {
     if (Test-Path $reportsDir) { Remove-Item $reportsDir -Recurse -Force }
     New-Item -ItemType Directory -Force -Path $checksDir | Out-Null
-    Copy-Item (Join-Path $PSScriptRoot 'HiddenChecks.java') $checksDir -Force
+    Copy-Item (Join-Path $PSScriptRoot 'HiddenChecksTest.java') $checksDir -Force
 
     Push-Location $repoPath
     try {
-        # HiddenChecks does not match surefire's default name patterns, so include it explicitly
-        & mvn -q test '-Dtest=*Test,*Tests,HiddenChecks' '-Dsurefire.failIfNoSpecifiedTests=false' *> $null
+        & mvn -q test *> $null
     } finally {
         Pop-Location
     }
@@ -42,7 +43,9 @@ try {
 } finally {
     if (Test-Path $checksDir) { Remove-Item $checksDir -Recurse -Force }
     if (Test-Path $compiledDir) { Remove-Item $compiledDir -Recurse -Force }
+    Get-ChildItem $reportsDir -Include 'TEST-*HiddenChecksTest.xml','*HiddenChecksTest.txt' -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force
 }
 
-Write-Output "Hidden checks: $passed / $totalChecks passed · Existing tests: $existing"
+Write-Output "Hidden checks: $passed / $totalChecks passed $([char]0x00B7) Existing tests: $existing"
+[Console]::OutputEncoding = $previousEncoding
 exit 0
