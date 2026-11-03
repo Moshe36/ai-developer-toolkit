@@ -271,5 +271,5 @@ Same ticket, both layers, no mock. Extra natural traps: both layers must agree o
 1. Approve the ticket wording (section 2)
 2. Workflow switching mechanism per harness
 3. Time box per trial vs. the draft-04 schedule
-4. Who builds the starting app and hidden suites, and when we rehearse
+4. ~~Who builds the starting app and hidden suites~~ Built; see [task-tracker/README.md](../task-tracker/README.md). Still open: when we rehearse
 5. Rehearsal plan: run each workflow at least twice per track to calibrate checks
