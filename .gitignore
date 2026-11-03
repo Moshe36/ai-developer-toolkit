@@ -24,3 +24,7 @@ Thumbs.db
 .vscode/
 *.suo
 *.user
+
+# Local-only (proprietary license)
+skills/pptx/
+__pycache__/
