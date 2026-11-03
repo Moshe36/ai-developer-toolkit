@@ -14,7 +14,26 @@ Read by the orchestrator in phase 4.
 ## 5. Detected Processes Index
 ## 6. Detailed Runtime Processes
 
-### 1. <Flow Name>
+### Orders
+
+**Feature purpose:** ...
+**Aggregate / resource owned:** Order
+
+**Flows in this feature**
+
+| # | Flow | Trigger | How it differs from its siblings |
+| - | ---- | ------- | -------------------------------- |
+| 1 | Create Order | HTTP POST /orders | only flow that assigns an order reference |
+| 2 | Update Order | HTTP PUT /orders/{id} | only flow that acquires the aggregate lock |
+| 3 | Get Order By Id | HTTP GET /orders/{id} | read-only, no mutation |
+
+**Shared participants and storage:** API, SVC, OrderRepository, MongoDB, OrderMapper — every flow loads or writes the Order document.
+
+**Shared vs. divergent behavior:** all three resolve the Order aggregate by id and map through OrderMapper. Only Update acquires the lock; only Create assigns a reference; only Get skips persistence entirely.
+
+**Errors across this feature:** ER-01 invalid JSON body (flow 1) · ER-02 duplicate reference (flow 1) · ER-03 Order not found (flows 2, 3) · ER-04 lock held by another owner (flow 2)
+
+#### 1. Create Order
 
 **Trigger / Entry Point:** ...
 **Purpose:** ...
@@ -24,15 +43,19 @@ Read by the orchestrator in phase 4.
 **Storage / In-Memory / Config / External Data:** ...
 **Errors Covered:** ER-01 ..., ER-02 ...
 
-#### Mermaid Sequence Diagram
+##### Mermaid Sequence Diagram
 
 (one mermaid block)
 
-#### Notes
+##### Notes
 
 Concise notes only: important runtime behavior, data movement, gaps, or intentional omissions.
 
-### 2. <Flow Name>
+#### 2. Update Order
+...
+
+### Audit Logging
+
 ...
 
 ## 7. Coverage Summary
@@ -40,7 +63,17 @@ Concise notes only: important runtime behavior, data movement, gaps, or intentio
 ## 9. Final QA Report
 ```
 
-Sections 3 and 4 are compact tables taken from the frozen contract inventory. Section 5 is a numbered index of included flows.
+### Feature grouping
+
+Section 6 is organised by the feature groups frozen in the contract, in contract order. Flow numbers run 1..N straight through, so every group's flows are contiguous.
+
+Each feature section carries, above its flows: the feature purpose and the aggregate it owns · a table of its flows and how each differs from its siblings · the participants and storage they share · what is shared versus divergent across them · the errors across the whole feature.
+
+**A feature holding exactly one flow gets no group heading.** That flow is rendered directly as `### <n>. <Flow Name>` with its diagram at `#### Mermaid Sequence Diagram`, exactly as an ungrouped flow. Do not wrap a single flow in a feature section.
+
+Grouping is presentation only. It never merges flows, never produces an umbrella diagram, and never alters a diagram's content — one entry point remains one flow with one runtime trace.
+
+Sections 3 and 4 are compact tables taken from the frozen contract inventory. Section 3 includes the group column. Section 5 is a numbered index of included flows, grouped by feature.
 
 Do not dump internal Runtime Trace or Error Trace tables into this file unless a table is genuinely needed to explain an ambiguity. **The Mermaid diagram is the trace**; `.hld-work/flow-notes/` holds the detail.
 
@@ -73,6 +106,8 @@ Output shape:
 ```
 
 Minimal headings, numbered per flow, one Mermaid block per flow, content byte-identical to the sequence file, no tables, no commentary.
+
+This file stays **flat** — no feature headings. Because flow numbers are contiguous within a group, a feature's diagrams are already adjacent, and the importer uses each heading as its diagram title.
 
 ## `docs/architecture/<service-slug>.excalidraw`
 

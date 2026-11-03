@@ -13,6 +13,7 @@ The linter owns every mechanically decidable rule. This file contains only what 
 | `Note over` used outside the two section titles | `lint_hld.py` |
 | Generic or bare-ID title notes | `lint_hld.py` |
 | Failed-alternative wording in Happy-path labels | `lint_hld.py` |
+| Error branches or failure wording in Happy-path `alt`/`opt`/`loop` labels | `lint_hld.py` |
 | RT/ER IDs in the trace but absent from the diagram | `lint_hld.py` |
 | Missing or malformed `file:line` evidence | `lint_hld.py` |
 | Java method signatures in labels | `lint_hld.py` |
@@ -37,6 +38,8 @@ Run the linter first. Then judge the rest.
 - [ ] Output construction is shown once, not duplicated
 - [ ] An HTTP flow returns to Client; a non-HTTP flow reaches a real final outcome, not a fabricated HTTP status
 - [ ] No real chain was collapsed into a shorter one
+- [ ] Every success path the entry point can take is traced — a forking method shows all its branches as Happy-path `alt`/`else`/`opt`, not just the first one read
+- [ ] Happy-path branch labels state business conditions in domain terms, never failure conditions
 
 **Labels**
 

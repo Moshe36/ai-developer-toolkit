@@ -180,6 +180,34 @@ def label_has_arrow_token(text: str) -> str | None:
     return None
 
 
+def check_happy_branch_label(lineno: int, keyword: str, label: str, report: Report) -> None:
+    """A Happy-path alt/else/opt/loop is a business fork, never an error branch."""
+    if not label:
+        report.error(
+            lineno,
+            "empty-branch-label",
+            f"Happy-path '{keyword}' has no label; state the business condition",
+        )
+        return
+    lowered = label.lower()
+    if ER_TOKEN.search(label):
+        report.error(
+            lineno,
+            "error-branch-in-happy-path",
+            f"Happy-path '{keyword}' names an ER id: {label!r} - error branches belong in Error scenarios",
+        )
+        return
+    for phrase in HAPPY_FORBIDDEN:
+        if phrase in lowered:
+            report.error(
+                lineno,
+                "error-branch-in-happy-path",
+                f"Happy-path '{keyword}' label contains failure wording {phrase!r}: {label!r} - "
+                f"a business fork is not an error branch",
+            )
+            return
+
+
 def check_diagram(start: int, body: list[str], report: Report, strict: bool) -> None:
     declared: set[str] = set()
     stack: list[tuple[int, str]] = []
@@ -318,6 +346,8 @@ def check_diagram(start: int, body: list[str], report: Report, strict: bool) -> 
                 elif GENERIC_TITLE.match(label.strip()):
                     report.error(lineno, "generic-branch-label", f"generic error branch label: {label!r}")
                 awaiting_title = (lineno, label or "else")
+            elif section == "happy":
+                check_happy_branch_label(lineno, block_cont.group(1), label, report)
             continue
 
         if block_open:
@@ -332,6 +362,8 @@ def check_diagram(start: int, body: list[str], report: Report, strict: bool) -> 
                 elif GENERIC_TITLE.match(label.strip()):
                     report.error(lineno, "generic-branch-label", f"generic error branch label: {label!r}")
                 awaiting_title = (lineno, label or "alt")
+            elif section == "happy" and keyword in ("alt", "opt", "loop"):
+                check_happy_branch_label(lineno, keyword, label, report)
             continue
 
         # ---- arrows ------------------------------------------------------ #

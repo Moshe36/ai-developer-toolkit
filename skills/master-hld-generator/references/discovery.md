@@ -18,14 +18,19 @@ Search for every way runtime execution can begin.
 
 `@RestController` · `@Controller` · `@RequestMapping` · `@GetMapping` · `@PostMapping` · `@PutMapping` · `@PatchMapping` · `@DeleteMapping` · `@Scheduled` · `@PostConstruct` · `@PreDestroy` · `ApplicationRunner` · `CommandLineRunner` · `@EventListener` · `@Async` · `@KafkaListener` / `@RabbitListener` / `@JmsListener` / any message consumer · message producers · `HealthIndicator` · GraphQL `@QueryMapping` / `@MutationMapping` · gRPC service impls · WebSocket handlers.
 
-Report per finding: `file:line` · trigger type · HTTP method + path (if applicable) · method signature · declaring class · request/input type · declared return type.
+Report per finding: `file:line` · trigger type · HTTP method + path (if applicable) · method signature · declaring class · request/input type · declared return type · **the domain aggregate or resource this entry point operates on**.
+
+**Determining the aggregate.** Follow the call one or two levels into the service and record the aggregate, entity, or resource the entry point primarily reads or mutates, plus the `file:line` that proves it. This column drives feature grouping in phase 2, so it must be evidence-backed. Where the entry point mutates one aggregate and reads another, record the one it **mutates**. Where you genuinely cannot tell, record `unknown` — the orchestrator resolves it. Never guess from the method name alone.
+
+**Also record whether the entry point has more than one success path.** If the method branches into mutually exclusive business outcomes (create vs. update, full vs. summary, dispatch on message type) or performs conditional extra work, record the branch conditions and their `file:line`. Writers need this to build the Happy-path branches; without it they will trace only the path they happened to read first.
 
 ### Findings format
 
 ```markdown
-| file:line | Trigger Type | Entry Point | Input Type | Return Type |
-| --------- | ------------ | ----------- | ---------- | ----------- |
-| src/main/java/com/x/OrderController.java:41 | HTTP POST /orders | OrderController.create | CreateOrderRequestDto | ResponseEntity of OrderDto |
+| file:line | Trigger Type | Entry Point | Input Type | Return Type | Aggregate (evidence) | Success Paths |
+| --------- | ------------ | ----------- | ---------- | ----------- | -------------------- | ------------- |
+| src/main/java/com/x/OrderController.java:41 | HTTP POST /orders | OrderController.create | CreateOrderRequestDto | ResponseEntity of OrderDto | Order (OrderService.java:63 saves OrderEntity) | single |
+| src/main/java/com/x/OrderController.java:58 | HTTP PUT /orders/{id} | OrderController.save | SaveOrderRequestDto | ResponseEntity of OrderDto | Order (OrderService.java:91 saves OrderEntity) | 2 — order exists (OrderService.java:88) / order is new (OrderService.java:95) |
 ```
 
 ---
@@ -128,6 +133,21 @@ Anything else is not a valid exclusion. If in doubt, include the flow.
 - [ ] Every public service operation is mapped to a flow or excluded
 - [ ] No grouped CRUD or domain-umbrella flows
 
+### Feature grouping
+
+Related flows are presented together in the final document. Grouping is a **presentation decision made here and frozen** — it never changes a diagram.
+
+**Group by the domain aggregate or resource the flows operate on**, not by class or package. Take the aggregate from the `Aggregate` column of `entrypoints.md`, which is evidence-backed. All flows that read or write the `Order` aggregate form one feature; all flows that write audit log entries form another, even when they live in different controllers. This matches how a reader searches ("show me everything about logging") and survives refactors that move methods between classes.
+
+Rules:
+
+- Every included flow belongs to exactly one feature group.
+- Where `entrypoints.md` recorded `unknown`, resolve the aggregate by reading that entry point directly. Do not group on a name-similarity guess.
+- Grouping is judgement, so record the aggregate or resource that justifies each group. If a flow touches two aggregates, group it by the one it **mutates**; if it mutates neither, group it by the one it primarily **reads**.
+- **Order the groups first, then number the flows 1..N straight through**, so every group's flows are contiguous. Numbering is assigned after grouping, never before.
+- A group holding exactly one flow gets **no group heading** in the final document — that flow is rendered on its own. Still record the group in the contract.
+- Grouping never merges flows, never produces an umbrella diagram, and never changes a diagram's content. One entry point is still one flow with one diagram.
+
 ### `.hld-work/contract.md` format
 
 ```markdown
@@ -147,22 +167,31 @@ FROZEN. Writers must use these values verbatim and must not re-derive them.
 | Mapper | OrderMapper | mapper |
 | GEH | GlobalExceptionHandler | error handler |
 
-## 2. Flow Inventory (FROZEN numbering)
+## 2. Feature Groups (FROZEN)
 
-| # | Flow Name | Trigger Type | Entry Point (file:line) | Include | Exclusion Reason |
-| - | --------- | ------------ | ----------------------- | ------- | ---------------- |
+| Group | Aggregate / Resource | Flow Numbers | Grouping Justification |
+| ----- | -------------------- | ------------ | ---------------------- |
+| Orders | Order | 1-3 | all three read or mutate the Order aggregate |
+| Audit Logging | AuditLogEntry | 4-5 | both append AuditLogEntry documents |
 
-## 3. Exception -> Handler -> Outcome Map
+## 3. Flow Inventory (FROZEN numbering)
+
+Numbered 1..N in group order, so each group's flows are contiguous.
+
+| # | Group | Flow Name | Trigger Type | Entry Point (file:line) | Include | Exclusion Reason |
+| - | ----- | --------- | ------------ | ----------------------- | ------- | ---------------- |
+
+## 4. Exception -> Handler -> Outcome Map
 
 | Exception | Thrown At (file:line) | Handled At (file:line) | Final Outcome |
 | --------- | --------------------- | ---------------------- | ------------- |
 
-## 4. Domain Glossary
+## 5. Domain Glossary
 
 | Canonical Name | Kind | Class (file:line) |
 | -------------- | ---- | ----------------- |
 
-## 5. Mapper / DTO Ownership
+## 6. Mapper / DTO Ownership
 
 | DTO / Output | Owner Class | Mapper Behavior | Non-trivial Because |
 | ------------ | ----------- | --------------- | ------------------- |

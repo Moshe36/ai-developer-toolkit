@@ -88,10 +88,11 @@ Merge the four findings files. Dedupe on `file:line`. If two explorers make conf
 Write and **freeze** `.hld-work/contract.md`:
 
 1. **Participant alias registry** — `SVC as OrderService`, one row per class that will ever appear as a participant. Aliases are binding for every writer.
-2. **Flow inventory** — number, name, trigger type, entry point, include/exclude, exclusion reason. Numbering is binding.
-3. **Exception → handler → outcome map** — which exception is handled where and with what final outcome/status. Writers look this up; they never re-derive it.
-4. **Domain glossary** — canonical aggregate/child/DTO names as used in code.
-5. **Mapper / DTO ownership table** — which class actually constructs each returned DTO. This makes the ownership gate a lookup instead of N independent investigations.
+2. **Feature groups** — related flows grouped by the domain aggregate or resource they operate on, not by class or package. Order the groups first, then number flows 1..N straight through so each group's flows are contiguous. Grouping is presentation only: it never merges flows and never changes a diagram.
+3. **Flow inventory** — number, group, name, trigger type, entry point, include/exclude, exclusion reason. Numbering is binding.
+4. **Exception → handler → outcome map** — which exception is handled where and with what final outcome/status. Writers look this up; they never re-derive it.
+5. **Domain glossary** — canonical aggregate/child/DTO names as used in code.
+6. **Mapper / DTO ownership table** — which class actually constructs each returned DTO. This makes the ownership gate a lookup instead of N independent investigations.
 
 Inventory rules and valid exclusion reasons: see `references/discovery.md`. Do not proceed to phase 3 until the contract is complete and internally consistent.
 

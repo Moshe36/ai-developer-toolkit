@@ -8,6 +8,7 @@ You have been given flow numbers and `.hld-work/contract.md`. The contract is fr
 
 - Use its **participant aliases verbatim**. Never invent an alias, never rename one.
 - Use its **flow numbers and titles verbatim**.
+- The contract assigns each flow to a **feature group**. Grouping affects only how the orchestrator arranges the final document — it never merges flows and never changes your diagram. One entry point is still one flow with one runtime trace. Do not draw sibling flows in your diagram, and do not reference them from it.
 - Look up exception handling in its **exception map**. Do not re-derive it.
 - Look up DTO ownership in its **mapper/DTO ownership table**. Do not re-derive it.
 - If the code contradicts the contract, do not silently deviate — record it in `contractViolations` in your receipt and use the code.
@@ -56,10 +57,11 @@ HTTP starts at Client and ends at Client. Scheduler starts at Scheduler and ends
 
 ## 2. Runtime Trace table
 
-| RT ID | From | To | Operation | Data In | Data Out / Return | Evidence | Mermaid Required |
-| ----- | ---- | -- | --------- | ------- | ----------------- | -------- | ---------------- |
+| RT ID | Branch | From | To | Operation | Data In | Data Out / Return | Evidence | Mermaid Required |
+| ----- | ------ | ---- | -- | --------- | ------- | ----------------- | -------- | ---------------- |
 
 - RT IDs sequential: `RT-01`, `RT-02`, …
+- `Branch` is `—` for rows on the single common path, or the business condition for rows inside a Happy-path `alt`/`else`/`opt` (see §7). Every success path must be traced.
 - **`Evidence` must be `path/File.java:LINE`.** A row you cannot cite is a row you must not write. This is what makes the trace auditable and what drives refresh-mode change detection.
 - Name every object passed between classes and every object returned from DB/storage/in-memory/external.
 - `Mermaid Required` is `yes` except for the allowed omissions in §3.2.
@@ -75,7 +77,7 @@ HTTP starts at Client and ends at Client. Scheduler starts at Scheduler and ends
 
 ### 3.2 Allowed omissions — the complete list
 
-Logger calls · simple getters/setters with no business meaning · Lombok-generated methods · pure constructor calls · local variable assignment · field-by-field copy steps **inside** a mapper (the mapper call and return arrows are still mandatory — see §7) · trivial null-safe formatting with no failure or business impact.
+Logger calls · simple getters/setters with no business meaning · Lombok-generated methods · pure constructor calls · local variable assignment · field-by-field copy steps **inside** a mapper (the mapper call and return arrows are still mandatory — see §11) · trivial null-safe formatting with no failure or business impact.
 
 **Include everything else by default.** Do not use the word "meaningful" to justify a silent omission — an omission must match an item on this list.
 
@@ -216,7 +218,51 @@ API->>API: build HakashFullDetailsDto from HakashEntity networks and channels
 
 ---
 
-## 7. Label quality — compact but specific
+## 7. Success-path branching
+
+One entry point is one flow with one diagram, even when it has several success paths. A method that creates or updates depending on existence, returns full or summary detail depending on a flag, or dispatches on message type is **still one flow** — it forks at runtime, and the diagram shows the fork.
+
+The contract's `Success Paths` column tells you which entry points fork. Trace **every** success path, not the one you read first.
+
+- **Mutually exclusive success outcomes** → `alt` / `else` inside the Happy path, labelled with the **business condition**.
+- **Conditional extra work on one path** → `opt`, labelled with the business condition.
+- **Repetition** → `loop`, labelled with what is iterated.
+
+Branch labels state the condition in domain terms and must not contain failure wording — a business fork is not an error. `alt order already exists` is a success path; `alt order not found` belongs in Error scenarios.
+
+```mermaid
+Note over Client,MongoDB: Happy path
+%% RT-02
+API->>SVC: save Order from SaveOrderRequestDto
+%% RT-03
+SVC->>Repo: look up Order by orderReference
+Repo-->>SVC: existing OrderEntity
+alt Order already exists for orderReference
+    %% RT-04
+    SVC->>SVC: apply SaveOrderRequestDto fields to existing OrderEntity
+    %% RT-05
+    SVC->>Repo: persist updated OrderEntity
+else no Order exists for orderReference
+    %% RT-06
+    SVC->>SVC: assign orderReference to new OrderEntity
+    %% RT-07
+    SVC->>Repo: persist new OrderEntity
+end
+opt caller requested full detail
+    %% RT-08
+    SVC->>Repo: load OrderLineEntity list by orderId
+end
+```
+
+Every branch carries its own RT rows, and the Runtime Trace table records which branch each row belongs to. A branch you do not trace is a missing flow, not a simplification.
+
+**Split into separate flows only when the paths share almost nothing** — for example a listener that dispatches on message type into wholly unrelated processing. In that case record the split and its justification in your receipt under `contractViolations`, because it changes the frozen flow count.
+
+The rule that success never appears inside an `else` means success never appears inside an **error** branch. A success-vs-success fork in the Happy path is correct and required.
+
+---
+
+## 8. Label quality — compact but specific
 
 One runtime action per label, in domain language. Prefer 3–10 words; ideal under 70 characters, acceptable under 100; over ~90 either split the arrow or move detail into the flow's *Primary Runtime/Data Movement* section. Never join multiple actions with semicolons — split into several arrows.
 
@@ -246,7 +292,7 @@ SVC->>SVC: add ChannelEntity to NetworkEntity channels map
 
 ---
 
-## 8. Mermaid / Excalidraw syntax safety
+## 9. Mermaid / Excalidraw syntax safety
 
 Generated Mermaid must parse and import into Excalidraw. A diagram that fails to import is a failed diagram, and phase 5 will catch it.
 
@@ -266,7 +312,7 @@ BPS->>XML: parse XML file into BroadcastPolicyWithSlotsXml
 
 ---
 
-## 9. Notes, method names, duplicate output
+## 10. Notes, method names, duplicate output
 
 - **No internal resolved-state notes.** Forbidden: `Note right of ...: resolved HakashEntity`, `Optional value present`, `validation passed`, `object mapped`, trivial-mapping or local-variable notes, or a note compensating for a bad label. If resolved data matters, show it via the return arrow or the next business step.
 
@@ -274,7 +320,7 @@ BPS->>XML: parse XML file into BroadcastPolicyWithSlotsXml
 
 - **Never use a note or bare text where an arrow belongs.** A note documents; it does not represent a runtime operation.
 
-- **No mapper or helper method-name arrows.** This is about *labels*, not about hiding the Mapper — the Mapper participant and its arrows are mandatory (§10), but the label describes behavior, never the method name. Forbidden labels: `toHakashFullDetailsDto(...)`, `toDto(entity)`, `mapToResponse(...)`, `convert(...)`, `buildDto(...)`. Do not create an extra self-arrow just because a private conversion helper exists — show the real data being assembled, or the helper's real internal operations:
+- **No mapper or helper method-name arrows.** This is about *labels*, not about hiding the Mapper — the Mapper participant and its arrows are mandatory (§11), but the label describes behavior, never the method name. Forbidden labels: `toHakashFullDetailsDto(...)`, `toDto(entity)`, `mapToResponse(...)`, `convert(...)`, `buildDto(...)`. Do not create an extra self-arrow just because a private conversion helper exists — show the real data being assembled, or the helper's real internal operations:
 
 ```mermaid
 loop for each channel broadcast policy
@@ -288,7 +334,7 @@ Mapper->>Mapper: assemble HakashFullDetailsDto with networks, channels, and slot
 
 ---
 
-## 10. Mapper participation and ownership
+## 11. Mapper participation and ownership
 
 **Mandatory inclusion.** If the runtime of a flow enters a mapper class or interface, the Mapper **is** a declared participant and its call and return are Mermaid arrows. This is unconditional — it applies to pure field-copy mapping, list mapping, nested mapping, and derived-field mapping alike. Never drop a Mapper to shorten a diagram, and never hide it because the mapping "looks trivial".
 
@@ -320,7 +366,7 @@ Show `API->>Mapper` or `SVC->>Mapper` per the real caller. If a mapper calls ano
 
 ---
 
-## 11. Self-arrows, storage, in-memory and config
+## 12. Self-arrows, storage, in-memory and config
 
 **Self-arrows must be real arrows.** A same-class step is written as `X->>X: <action>` (and `X-->>X: <returned data>` when a return matters). Never render a self-step as a note, a bare text line, a comment, or extra words appended to a neighbouring arrow's label.
 
@@ -356,7 +402,7 @@ Config-->>SVC: lockTTL duration
 
 ---
 
-## 12. Participants
+## 13. Participants
 
 **Allowed when code-proven:** Client · API/Controller · Service · Validator · Helper · Repository · MongoDB/SQL/Redis/FileSystem/Cache/InMemoryState/Config · External Service · Scheduler · Listener/Consumer · Producer · Broker/Queue/Topic · Initializer · GlobalExceptionHandler/ControllerAdvice · Parser/Serializer · Mapper · Audit component.
 
@@ -366,7 +412,7 @@ Aliases come from the contract, declared as `API as HakashController`, `SVC as H
 
 ---
 
-## 13. Mermaid block structure
+## 14. Mermaid block structure
 
 Exactly one Mermaid block per flow.
 
@@ -409,11 +455,11 @@ sequenceDiagram
     end
 ```
 
-Structural requirements: every required RT ID appears as a `%% RT-xx` comment · every required ER ID appears in an error-branch label · Happy path first, Error scenarios second · the success path is never inside an `else` · one block per flow · no separate error diagram · every fence closed · every `loop`/`alt`/`else`/`end` balanced · every referenced participant declared.
+Structural requirements: every required RT ID appears as a `%% RT-xx` comment · every required ER ID appears in an error-branch label · Happy path first, Error scenarios second · the success path is never inside an **error** branch (a success-vs-success `alt` in the Happy path is correct — see §7) · one block per flow · no separate error diagram · every fence closed · every `loop`/`alt`/`else`/`opt`/`end` balanced · every referenced participant declared.
 
 ---
 
-## 14. Before you return
+## 15. Before you return
 
 Run the linter on your own file and fix everything it reports:
 

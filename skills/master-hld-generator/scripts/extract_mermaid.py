@@ -21,7 +21,9 @@ import sys
 
 FENCE_OPEN = re.compile(r"^\s*```+\s*mermaid\s*$", re.IGNORECASE)
 FENCE_ANY = re.compile(r"^\s*```+\s*$")
-FLOW_HEADING = re.compile(r"^###\s+(?P<num>\d+)\.\s+(?P<name>.+?)\s*$")
+# A flow heading is `### 4. Name` (ungrouped) or `#### 4. Name` (inside a feature
+# group). A feature heading carries no leading number, so it never matches.
+FLOW_HEADING = re.compile(r"^#{3,4}\s+(?P<num>\d+)\.\s+(?P<name>.+?)\s*$")
 DOC_TITLE = re.compile(r"^#\s+(?P<title>.+?)\s*$")
 
 
@@ -65,7 +67,8 @@ def parse(lines: list[str]) -> tuple[str, list[tuple[int, str, list[str]]]]:
                 continue
             if current is None:
                 print(
-                    f"ERROR: mermaid block near line {index} is not under a '### <n>. <name>' flow heading",
+                    f"ERROR: mermaid block near line {index} is not under a "
+                    f"'### <n>. <name>' or '#### <n>. <name>' flow heading",
                     file=sys.stderr,
                 )
                 raise SystemExit(1)
