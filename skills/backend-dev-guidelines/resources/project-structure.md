@@ -1,784 +1,179 @@
 # Project Structure
 
-Comprehensive guide to organizing Spring Boot backend projects using package-by-feature structure.
-
----
+Organize a Java/Spring backend around business capabilities, clear ownership, and verifiable runtime boundaries. Adapt the layout to the repository; do not reorganize an established application merely to match a diagram.
 
 ## Table of Contents
 
-1. [Overview](#overview)
-2. [Package Structure](#package-structure)
-3. [Controllers Layer](#controllers-layer)
-4. [Services Layer](#services-layer)
-5. [Repositories Layer](#repositories-layer)
-6. [Models and DTOs](#models-and-dtos)
-7. [Mappers](#mappers)
-8. [Infrastructure](#infrastructure)
-9. [Resources](#resources)
-10. [Best Practices](#best-practices)
+- [Package by feature](#package-by-feature)
+- [Command feature file map](#command-feature-file-map)
+- [Add a new feature](#add-a-new-feature)
+- [Responsibilities and dependency direction](#responsibilities-and-dependency-direction)
+- [Resources and tests](#resources-and-tests)
+- [Structure review](#structure-review)
 
----
+## Package by feature
 
-## Overview
+For new applications, group code by capability under `feature/<domain>`; each feature owns its technical layers. Extend existing applications using their package conventions, including established layer-based layouts. The command feature map below shows possible participants, not a scaffold to generate.
 
-### Package-by-Feature Structure
+- Preserve existing singular/plural names and nested feature conventions when extending code.
+- Keep small features small: a controller and service do not require empty repository or mapper packages.
+- Add `client`, `stream`, `operation`, or `scheduler` packages when they describe a real responsibility already present or needed by the slice.
+- Keep enums with the feature/model they describe, not in an application-wide enum bucket.
+- Extract shared code only when its ownership and consumers are genuinely cross-feature. Avoid a `utils` or `common` dumping ground.
 
-Organize code by domain features rather than technical layers:
+Package boundaries are a navigation aid, not automatic architectural enforcement. Use package-private visibility where practical; introduce module or architecture checks only when the project needs stronger enforcement.
 
-```
-com.company.project.backend/
-├── controllers/          # GraphQL/REST controllers
-│   └── frontend/        # Frontend-facing controllers
-├── services/            # Business logic layer
-├── repositories/        # Data access layer
-├── models/             # Domain models
-├── dto/                # Data Transfer Objects
-│   ├── gql/           # GraphQL DTOs
-│   ├── json/          # REST JSON DTOs
-│   └── external/      # External system DTOs
-├── mappers/           # MapStruct mappers
-├── clients/           # External API clients
-├── enums/             # Enumerations
-├── infrastructure/    # Cross-cutting concerns
-│   ├── beans/        # Configuration beans
-│   ├── exceptions/   # Exception classes
-│   └── handlers/     # Global handlers
-├── utils/            # Utility classes
-└── constants/        # Application constants
-```
+## Command feature file map
 
-### Why Package-by-Feature?
+For a capability such as changing device transmission power, this shows the placement of all possible participants. Paths below `feature/power` are feature-local; add them only when their responsibility is required. The names are illustrative, not extra classes to create beside an existing system-parameters feature.
 
-**Benefits:**
-- Related code stays together
-- Easy to find and modify features
-- Clear domain boundaries
-- Easier to split into microservices later
-- Better encapsulation
+```text
+src/main/java/<base-package>/
+├── feature/
+│   ├── power/
+│   │   ├── controller/PowerController.java
+│   │   ├── service/PowerService.java
+│   │   ├── repository/PowerRepository.java
+│   │   ├── model/PowerSnapshot.java
+│   │   ├── model/TransmissionPower.java
+│   │   ├── dto/SetPowerInput.java
+│   │   ├── dto/PowerGql.java
+│   │   ├── mapper/PowerMapper.java
+│   │   ├── operation/PowerOperation.java
+│   │   ├── stream/PowerStream.java
+│   │   ├── config/PowerProperties.java
+│   │   ├── exception/PowerUnavailableException.java
+│   │   └── handler/PowerGraphQlExceptionResolver.java
+│   └── operation/                     # If this shared application capability already exists
+│       ├── model/OperationType.java
+│       └── service/OperationService.java
+└── infrastructure/
+    ├── device/DeviceClient.java       # Reuse the actual client; do not duplicate it per feature
+    └── config/AsyncConfig.java        # Shared managed execution resources
 
----
+src/main/resources/
+├── graphql/power.graphqls
+└── application.yml                   # Feature settings only if this slice needs them
 
-## Package Structure
-
-### Complete Example
-
-```
-src/
-├── main/
-│   ├── java/
-│   │   └── com/
-│   │       └── company/
-│   │           └── project/
-│   │               └── backend/
-│   │                   ├── Application.java
-│   │                   │
-│   │                   ├── controllers/
-│   │                   │   └── frontend/
-│   │                   │       ├── RadioController.java
-│   │                   │       ├── LinkController.java
-│   │                   │       └── UserController.java
-│   │                   │
-│   │                   ├── services/
-│   │                   │   ├── RadioService.java
-│   │                   │   ├── LinkService.java
-│   │                   │   └── UserService.java
-│   │                   │
-│   │                   ├── repositories/
-│   │                   │   ├── RadioRepository.java
-│   │                   │   ├── LinkRepository.java
-│   │                   │   └── UserRepository.java
-│   │                   │
-│   │                   ├── models/
-│   │                   │   ├── Radio.java
-│   │                   │   ├── Link.java
-│   │                   │   └── User.java
-│   │                   │
-│   │                   ├── dto/
-│   │                   │   ├── gql/
-│   │                   │   │   ├── RadioGql.java
-│   │                   │   │   ├── LinkGql.java
-│   │                   │   │   ├── CreateRadioInput.java
-│   │                   │   │   └── UpdateLinkInput.java
-│   │                   │   ├── json/
-│   │                   │   │   ├── RadioDto.java
-│   │                   │   │   ├── LinkDto.java
-│   │                   │   │   └── CreateRadioRequest.java
-│   │                   │   └── external/
-│   │                   │       └── ExternalRadioDto.java
-│   │                   │
-│   │                   ├── mappers/
-│   │                   │   ├── FrontendMapper.java
-│   │                   │   ├── RestMapper.java
-│   │                   │   └── ExternalMapper.java
-│   │                   │
-│   │                   ├── clients/
-│   │                   │   └── RadioClient.java
-│   │                   │
-│   │                   ├── enums/
-│   │                   │   ├── RadioType.java
-│   │                   │   ├── RadioStatus.java
-│   │                   │   └── LinkStatus.java
-│   │                   │
-│   │                   ├── infrastructure/
-│   │                   │   ├── beans/
-│   │                   │   │   ├── AppConfigs.java
-│   │                   │   │   ├── CacheConfiguration.java
-│   │                   │   │   └── WebClientConfiguration.java
-│   │                   │   ├── exceptions/
-│   │                   │   │   ├── ResourceNotFoundException.java
-│   │                   │   │   ├── ResourceAlreadyExistsException.java
-│   │                   │   │   └── InvalidOperationException.java
-│   │                   │   └── handlers/
-│   │                   │       ├── GlobalRestExceptionHandler.java
-│   │                   │       └── GraphQLExceptionHandler.java
-│   │                   │
-│   │                   ├── utils/
-│   │                   │   └── StringUtils.java
-│   │                   │
-│   │                   └── constants/
-│   │                       └── AppConstants.java
-│   │
-│   └── resources/
-│       ├── application.yml
-│       ├── application-dev.yml
-│       ├── application-prod.yml
-│       └── graphql/
-│           ├── schema.graphqls
-│           ├── query.graphqls
-│           ├── mutation.graphqls
-│           ├── types/
-│           │   ├── radio.graphqls
-│           │   └── link.graphqls
-│           └── inputs/
-│               ├── radio-inputs.graphqls
-│               └── link-inputs.graphqls
-│
-└── test/
-    └── java/
-        └── com/
-            └── company/
-                └── project/
-                    └── backend/
-                        ├── controllers/
-                        │   └── RadioControllerTest.java
-                        ├── services/
-                        │   └── RadioServiceTest.java
-                        └── repositories/
-                            └── RadioRepositoryTest.java
+src/test/java/<base-package>/feature/power/
+├── controller/PowerControllerGraphQlTest.java
+├── service/PowerServiceTest.java
+├── repository/PowerRepositoryTest.java
+├── mapper/PowerMapperTest.java
+└── stream/PowerStreamTest.java
 ```
 
----
+| File/owner | Add or extend it when | Keep out of it |
+|---|---|---|
+| Controller + schema | Exposing the feature's query, mutation, or subscription | Worker creation, retry loops, polling, business predicates |
+| Service | Coordinating the use case and its permission/ownership, preconditions, and completion rule | GraphQL error construction or HTTP status logic |
+| Repository | The feature owns state/observations or needs a distinct persistence projection | Assuming a device ACK is observed state or inventing a database |
+| Model + DTO + mapper | There is domain meaning or a real public/external contract boundary | Duplicated identical representations without a reason |
+| Operation enum | Commands participate in the existing coordinator's conflict/deadline policy | A private duplicate coordinator, executor, or retry implementation |
+| Stream | Subscription lifecycle/projection differs from the repository's raw observations | An unbounded event queue or leaked listener |
+| Config + exception + handler | The feature introduces a real setting, domain failure, or public translation | A second global security configuration or a catch-all handler per feature |
+| Shared client/coordinator | Existing infrastructure lacks a necessary transport method or execution capability | The power-specific target predicate or API DTO |
 
-## Controllers Layer
+Feature identity and operation identity are not the same thing: a capability can have several commands, each with a separate conflict/completion contract. Sub-resource scope matters too; commands for two RF heads may need a finer key than device ID. Inspect the actual shared coordinator instead of assuming its key or exclusivity flag provides the required isolation.
 
-### Purpose
+## Add a new feature
 
-Controllers handle incoming requests and return responses:
-- **GraphQL Controllers**: Handle GraphQL queries and mutations
-- **REST Controllers**: Handle HTTP REST requests
+### 1. Locate the capability and reference path
 
-### GraphQL Controller Example
+Search the existing schema, feature packages, service callers, client API, permission catalog/policy, and tests. If the behavior already belongs to `systemparams` or `network`, extend that feature rather than introducing a competing `power` state owner. For a genuinely new capability, choose `feature/<domain>` and mirror its test packages.
 
-**File**: `controllers/frontend/RadioController.java`
+Write the concrete use case before its files. Example: “An authorized caller changes a connected device's power; the mutation completes only after a fresh observation reports the target, or returns the documented busy/timeout/failure result.” State whether the caller can address every device or only an owned session/resource.
 
-```java
-package com.company.project.backend.controllers.frontend;
+### 2. Choose the execution contract
 
-import com.company.project.backend.services.RadioService;
-import com.company.project.backend.mappers.FrontendMapper;
-import com.company.project.backend.dto.gql.*;
-import org.springframework.graphql.data.method.annotation.*;
-import org.springframework.stereotype.Controller;
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
-import lombok.RequiredArgsConstructor;
+| Use case | Execution path |
+|---|---|
+| Read local state | Controller → service → existing state owner → projection |
+| Change authoritative local state | Controller → service → atomic state mutation/transaction → stored result |
+| Command with final response/follow-up | Controller → service → shared coordinator `execute` equivalent → bounded response handling |
+| Command requiring observed confirmation | Controller → service → shared coordinator `executeConfirmed` equivalent; independent ingestion supplies confirmation |
+| Subscription | Controller → authorized feature watch → bounded projection → cancellation cleanup |
 
-@Controller
-@RequiredArgsConstructor
-public class RadioController {
-    private final RadioService radioService;
-    private final FrontendMapper mapper;
+The coordinator names are example application APIs, not Spring methods. Use the existing equivalent; the [async recipe](core-patterns.md#async-operation-pattern) explains its required contract.
 
-    @QueryMapping("radio")
-    public RadioGql radio(@Argument("radioId") @NotBlank String radioId) {
-        return mapper.toGql(radioService.getRadio(radioId));
-    }
+### 3. Implement and verify one complete slice at a time
 
-    @MutationMapping("createRadio")
-    public RadioGql createRadio(@Argument("input") @Valid CreateRadioInput input) {
-        return mapper.toGql(radioService.createRadio(mapper.toDomain(input)));
-    }
-}
+The following progression is for a new remote-control feature. Every row must be integrated and testable before widening it; it is not “all models, then all services.” Existing observation infrastructure can make the first slice unnecessary.
+
+| Slice | Files touched together | Acceptance check |
+|---|---|---|
+| Observe current power | Required client read/event adapter, model, repository, service, query/schema, output mapper, corresponding tests | An authorized caller sees actual observed state; missing/stale/denied behavior is explicit; no command is sent |
+| Set one power value | Mutation/input/schema, feature operation type, service command supplier + named confirmation predicate, client command method, error mapping/policy and tests | ACK alone does not complete it; fresh target observation does; invalid/denied/conflicting requests have no unintended side effect |
+| Publish updates, if requested | Subscription/schema, feature stream adapter if needed, ownership policy and stream/transport tests | Initial-value/replay contract is accurate; slow-consumer policy is bounded; cancellation/expiry releases registrations |
+
+Include required configuration, lifecycle, timeout, and concurrency handling in the slice that introduces the resource or command. These are acceptance conditions for that slice, not a deferred hardening phase. Use controlled ACK/observation sources and real proxies/transports for the guarantees under test.
+
+### 4. Check registration and integration points
+
+- Ensure component scanning includes the feature and generated mapper implementations; do not add redundant `@ComponentScan` to conceal package placement errors.
+- Ensure the configured GraphQL locations discover the feature schema and root/enum/scalar contracts remain consistent.
+- Register new configuration properties using the host's scanning or enablement convention and test their defaults/validation.
+- Extend the existing permission catalog/RBAC policy or standard authority checks **only if the operation introduces a new permission**; verify enforcement, not merely declaration.
+- Add only required transport commands/reads and test wire/error behavior. A mock implementation does not finish production integration.
+- Connect polling/events and lifecycle cleanup to the actual state owner. Async fixed-delay dispatch may overlap; prove the chosen single-flight/conflict rule.
+- Update fixtures, public API documentation, frontend contract consumers, and deployment settings affected by the new behavior. Do not create unrequested unrelated artifacts.
+
+**Definition of done:** the feature is reachable through its real entry point, permitted callers can complete the promised use case, denied/invalid callers cannot cause effects, state reflects the chosen source of truth, and failure/concurrency/shutdown paths have verification evidence. A new directory tree or a future-returning method alone is not a completed feature.
+
+## Responsibilities and dependency direction
+
+Typical request path:
+
+```text
+Transport adapter → application service → domain/state owner or external client
+                        ↓
+                 domain result/snapshot → boundary mapping → transport result
 ```
 
-### REST Controller Example
+| Area | Owns | Does not own |
+|---|---|---|
+| Controller | Transport binding, boundary validation, caller context, response mapping | Conflict arbitration, device protocols, database queries |
+| Service | Authorization-sensitive use cases, invariants, orchestration, completion semantics | HTTP status codes or GraphQL error formatting |
+| Model | Domain meaning, valid transitions, value/snapshot representation | Spring transport binding and persistence plumbing by default |
+| Repository | Access and atomic updates to explicitly owned state | An assumption that all state is durable or authoritative |
+| Client/adapter | Wire protocol, serialization, bounded I/O, protocol errors | Claiming that an ACK proves domain completion |
+| Mapper | Explicit representation conversion | Sending commands, allocating domain identity, enforcing permissions |
 
-**File**: `controllers/frontend/RadioRestController.java`
+Controllers should be thin, but services need not form a rigid controller → service → database chain. A discovery use case can call a transport adapter and publish snapshots without a database. A scheduled job should call the same application boundary as a transport adapter when it performs the same use case.
 
-```java
-package com.company.project.backend.controllers.frontend;
+Cross-feature access should use a deliberate application/domain API rather than reaching into another feature's mutable maps or transport DTOs. Avoid circular service dependencies; they often indicate unclear ownership or an orchestration responsibility that belongs elsewhere. Do not add an interface for every class solely to imitate layers.
 
-import com.company.project.backend.services.RadioService;
-import com.company.project.backend.mappers.RestMapper;
-import com.company.project.backend.dto.json.*;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.http.ResponseEntity;
-import org.springframework.http.HttpStatus;
-import io.swagger.v3.oas.annotations.*;
-import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
+Transport details belong in [graphql-patterns.md](graphql-patterns.md) and [rest-api-patterns.md](rest-api-patterns.md); failure translation belongs in [exception-handling.md](exception-handling.md).
 
-@RestController
-@RequestMapping("/api/v1/radios")
-@RequiredArgsConstructor
-@Tag(name = "Radio Management")
-public class RadioRestController {
-    private final RadioService radioService;
-    private final RestMapper mapper;
+Place state owners with their capability and shared technical resources under existing infrastructure. Use [core patterns](core-patterns.md#state-ownership-and-repository-contracts) for state contracts, [DTO and mapping](dto-and-mapping.md) for representation boundaries, and [configuration](configuration.md#executors-scheduling-and-lifecycle) for resource ownership.
 
-    @GetMapping("/{radioId}")
-    @Operation(summary = "Get radio by ID")
-    public ResponseEntity<RadioDto> getRadio(@PathVariable String radioId) {
-        return ResponseEntity.ok(mapper.toDto(radioService.getRadio(radioId)));
-    }
+## Resources and tests
 
-    @PostMapping
-    @Operation(summary = "Create new radio")
-    public ResponseEntity<RadioDto> createRadio(@RequestBody @Valid CreateRadioRequest request) {
-        return ResponseEntity
-            .status(HttpStatus.CREATED)
-            .body(mapper.toDto(radioService.createRadio(mapper.toDomain(request))));
-    }
-}
+Keep the application's established resource-loading rules:
+
+```text
+src/main/resources/
+├── application.yml
+├── application-<profile>.yml     # Only profiles actually used
+├── graphql/                    # If GraphQL is implemented
+│   └── schema.graphqls
+└── db/migration/                # If the configured migration tool uses this path
+
+src/test/java/com/example/backend/feature/device/
+├── service/DeviceServiceTest.java
+└── repository/DeviceRepositoryTest.java
 ```
 
----
-
-## Services Layer
-
-### Purpose
-
-Services contain business logic and coordinate between repositories and external clients.
-
-### Service Example
-
-**File**: `services/RadioService.java`
-
-```java
-package com.company.project.backend.services;
-
-import com.company.project.backend.repositories.RadioRepository;
-import com.company.project.backend.clients.RadioClient;
-import com.company.project.backend.models.Radio;
-import com.company.project.backend.enums.RadioStatus;
-import com.company.project.backend.infrastructure.exceptions.ResourceNotFoundException;
-import org.springframework.stereotype.Service;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-
-@Service
-@RequiredArgsConstructor
-@Slf4j
-public class RadioService {
-    private final RadioRepository radioRepository;
-    private final RadioClient radioClient;
-
-    public Radio getRadio(String radioId) {
-        log.info("Fetching radio: {}", radioId);
-        return radioRepository.findById(radioId)
-            .orElseThrow(() -> new ResourceNotFoundException("Radio", radioId));
-    }
-
-    public Radio createRadio(CreateRadioCommand command) {
-        log.info("Creating radio: {}", command.getName());
-
-        Radio radio = Radio.builder()
-            .name(command.getName())
-            .type(command.getType())
-            .status(RadioStatus.INACTIVE)
-            .build();
-
-        Radio saved = radioRepository.save(radio);
-        radioClient.createRadio(saved);
-
-        log.info("Created radio: {}", saved.getId());
-        return saved;
-    }
-}
-```
-
----
-
-## Repositories Layer
-
-### Purpose
-
-Repositories abstract data access and provide CRUD operations.
-
-### Repository Example
-
-**File**: `repositories/RadioRepository.java`
-
-```java
-package com.company.project.backend.repositories;
-
-import com.company.project.backend.models.Radio;
-import com.company.project.backend.enums.RadioStatus;
-import org.springframework.stereotype.Repository;
-import lombok.extern.slf4j.Slf4j;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-
-@Repository
-@Slf4j
-public class RadioRepository {
-    private final Map<String, Radio> radios = new ConcurrentHashMap<>();
-
-    public Optional<Radio> findById(String id) {
-        log.debug("Finding radio by id: {}", id);
-        return Optional.ofNullable(radios.get(id));
-    }
-
-    public List<Radio> findAll() {
-        log.debug("Finding all radios");
-        return new ArrayList<>(radios.values());
-    }
-
-    public Radio save(Radio radio) {
-        if (radio.getId() == null) {
-            radio.setId(UUID.randomUUID().toString());
-        }
-        log.debug("Saving radio: {}", radio.getId());
-        radios.put(radio.getId(), radio);
-        return radio;
-    }
-
-    public void deleteById(String id) {
-        log.debug("Deleting radio: {}", id);
-        radios.remove(id);
-    }
-
-    public boolean existsByName(String name) {
-        return radios.values().stream()
-            .anyMatch(radio -> radio.getName().equals(name));
-    }
-}
-```
-
----
-
-## Models and DTOs
-
-### Domain Models
-
-**File**: `models/Radio.java`
-
-```java
-package com.company.project.backend.models;
-
-import com.company.project.backend.enums.RadioType;
-import com.company.project.backend.enums.RadioStatus;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import java.util.List;
-
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class Radio {
-    private String id;
-    private String name;
-    private RadioType type;
-    private RadioStatus status;
-    private List<Link> links;
-
-    public Link getLinkById(String linkId) {
-        return links.stream()
-            .filter(link -> link.getId().equals(linkId))
-            .findFirst()
-            .orElseThrow(() -> new NoSuchElementException("Link not found: " + linkId));
-    }
-}
-```
-
-### GraphQL DTOs
-
-**File**: `dto/gql/RadioGql.java`
-
-```java
-package com.company.project.backend.dto.gql;
-
-import java.util.List;
-
-public record RadioGql(
-    String id,
-    String name,
-    RadioTypeGql type,
-    RadioStatusGql status,
-    List<LinkGql> links
-) {}
-```
-
-**File**: `dto/gql/CreateRadioInput.java`
-
-```java
-package com.company.project.backend.dto.gql;
-
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
-
-public record CreateRadioInput(
-    @NotBlank(message = "Name is required")
-    @Size(min = 3, max = 100, message = "Name must be between 3 and 100 characters")
-    String name,
-
-    @NotBlank(message = "Type is required")
-    RadioTypeGql type
-) {}
-```
-
-### REST DTOs
-
-**File**: `dto/json/RadioDto.java`
-
-```java
-package com.company.project.backend.dto.json;
-
-import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.Data;
-import java.util.List;
-
-@Data
-public class RadioDto {
-    private String id;
-    private String name;
-
-    @JsonProperty("radio_type")
-    private String type;
-
-    @JsonProperty("radio_status")
-    private String status;
-
-    private List<LinkDto> links;
-}
-```
-
-### Enums
-
-**File**: `enums/RadioStatus.java`
-
-```java
-package com.company.project.backend.enums;
-
-public enum RadioStatus {
-    ACTIVE,
-    INACTIVE,
-    PENDING,
-    ARCHIVED
-}
-```
-
----
-
-## Mappers
-
-### Purpose
-
-Mappers handle conversion between different object types (DTOs, domain models).
-
-### Mapper Example
-
-**File**: `mappers/FrontendMapper.java`
-
-```java
-package com.company.project.backend.mappers;
-
-import com.company.project.backend.models.*;
-import com.company.project.backend.dto.gql.*;
-import com.company.project.backend.enums.*;
-import org.mapstruct.Mapper;
-import org.mapstruct.MappingConstants;
-
-@Mapper(componentModel = MappingConstants.ComponentModel.SPRING)
-public interface FrontendMapper {
-
-    // Domain to GraphQL
-    RadioGql toGql(Radio radio);
-    LinkGql toGql(Link link);
-
-    // GraphQL to Domain
-    Radio toDomain(CreateRadioInput input);
-    Link toDomain(CreateLinkInput input);
-
-    // Enum mapping
-    RadioStatusGql toGql(RadioStatus status);
-    RadioStatus toDomain(RadioStatusGql status);
-
-    RadioTypeGql toGql(RadioType type);
-    RadioType toDomain(RadioTypeGql type);
-}
-```
-
----
-
-## Infrastructure
-
-### Configuration Beans
-
-**File**: `infrastructure/beans/AppConfigs.java`
-
-```java
-package com.company.project.backend.infrastructure.beans;
-
-import com.fasterxml.jackson.annotation.JsonProperty;
-import jakarta.annotation.PostConstruct;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.boot.context.properties.bind.DefaultValue;
-import org.springframework.validation.annotation.Validated;
-
-@ConfigurationProperties(prefix = "app.configs")
-@Validated
-@Slf4j
-public record AppConfigs(
-    @JsonProperty("http-timeout-ms")
-    @DefaultValue("5000")
-    int httpTimeoutMs,
-
-    @JsonProperty("cache-size")
-    @DefaultValue("1000")
-    int cacheSize
-) {
-    @PostConstruct
-    public void init() {
-        log.info("Loaded configuration: {}", this);
-    }
-}
-```
-
-### Custom Exceptions
-
-**File**: `infrastructure/exceptions/ResourceNotFoundException.java`
-
-```java
-package com.company.project.backend.infrastructure.exceptions;
-
-public class ResourceNotFoundException extends RuntimeException {
-
-    public ResourceNotFoundException(String message) {
-        super(message);
-    }
-
-    public ResourceNotFoundException(String resourceType, String resourceId) {
-        super(String.format("%s not found with ID: %s", resourceType, resourceId));
-    }
-}
-```
-
-### Exception Handlers
-
-**File**: `infrastructure/handlers/GlobalRestExceptionHandler.java`
-
-```java
-package com.company.project.backend.infrastructure.handlers;
-
-import com.company.project.backend.infrastructure.exceptions.ResourceNotFoundException;
-import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.http.ResponseEntity;
-import org.springframework.http.HttpStatus;
-import lombok.extern.slf4j.Slf4j;
-
-@RestControllerAdvice
-@Slf4j
-public class GlobalRestExceptionHandler {
-
-    @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<ErrorResponse> handleNotFound(ResourceNotFoundException ex) {
-        log.error("Resource not found: {}", ex.getMessage());
-        ErrorResponse error = new ErrorResponse(
-            HttpStatus.NOT_FOUND.value(),
-            ex.getMessage()
-        );
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
-    }
-}
-```
-
----
-
-## Resources
-
-### Application Configuration
-
-**File**: `resources/application.yml`
-
-```yaml
-spring:
-  application:
-    name: radio-backend
-  threads:
-    virtual:
-      enabled: true
-
-app:
-  configs:
-    http-timeout-ms: 5000
-    cache-size: 1000
-
-logging:
-  level:
-    root: INFO
-    com.company.project: DEBUG
-```
-
-### GraphQL Schema
-
-**File**: `resources/graphql/schema.graphqls`
-
-```graphql
-schema {
-  query: Query
-  mutation: Mutation
-}
-```
-
-**File**: `resources/graphql/query.graphqls`
-
-```graphql
-type Query {
-  radio(radioId: ID!): Radio
-  radios: [Radio!]!
-  link(radioId: ID!, linkId: ID!): Link
-}
-```
-
-**File**: `resources/graphql/types/radio.graphqls`
-
-```graphql
-type Radio {
-  id: ID!
-  name: String!
-  type: RadioType!
-  status: RadioStatus!
-  links: [Link!]!
-}
-
-enum RadioType {
-  TYPE_A
-  TYPE_B
-  TYPE_C
-}
-
-enum RadioStatus {
-  ACTIVE
-  INACTIVE
-  PENDING
-}
-```
-
----
-
-## Best Practices
-
-### 1. Package-by-Feature
-
-```
-// GOOD: Package by feature
-com.company.project/
-├── controllers/
-├── services/
-├── repositories/
-└── models/
-
-// BAD: Package by layer with mixed domains
-com.company.project/
-├── controllers/
-│   ├── RadioController.java
-│   ├── LinkController.java
-│   ├── UserController.java
-│   └── OrderController.java  // Unrelated domain
-```
-
-### 2. Consistent Naming
-
-```java
-// GOOD: Consistent naming
-RadioController.java      // Controller
-RadioService.java        // Service
-RadioRepository.java     // Repository
-Radio.java              // Domain model
-RadioGql.java           // GraphQL DTO
-RadioDto.java           // REST DTO
-
-// BAD: Inconsistent naming
-RadioCtrl.java
-RadioSvc.java
-RadioRepo.java
-```
-
-### 3. Separate DTOs by Usage
-
-```
-dto/
-├── gql/               # GraphQL DTOs
-│   ├── RadioGql.java
-│   └── CreateRadioInput.java
-├── json/              # REST DTOs
-│   ├── RadioDto.java
-│   └── CreateRadioRequest.java
-└── external/          # External API DTOs
-    └── ExternalRadioDto.java
-```
-
-### 4. Group Related Configuration
-
-```
-infrastructure/
-├── beans/             # Configuration beans
-│   ├── AppConfigs.java
-│   └── CacheConfiguration.java
-├── exceptions/        # Custom exceptions
-│   └── ResourceNotFoundException.java
-└── handlers/          # Global handlers
-    └── GlobalRestExceptionHandler.java
-```
-
-### 5. Keep Test Structure Mirror Production
-
-```
-src/
-├── main/java/com/company/project/
-│   ├── controllers/RadioController.java
-│   ├── services/RadioService.java
-│   └── repositories/RadioRepository.java
-└── test/java/com/company/project/
-    ├── controllers/RadioControllerTest.java
-    ├── services/RadioServiceTest.java
-    └── repositories/RadioRepositoryTest.java
-```
-
----
-
-## Summary
-
-Well-organized Spring Boot projects follow these principles:
-
-1. **Package-by-feature**: Group related code together
-2. **Clear layer separation**: Controllers → Services → Repositories
-3. **Separate DTOs**: Different DTOs for GraphQL, REST, domain, external
-4. **Infrastructure package**: Cross-cutting concerns (config, exceptions, handlers)
-5. **Consistent naming**: Clear, descriptive names following conventions
-6. **Resource organization**: GraphQL schemas in types/ and inputs/ subdirectories
-7. **Test structure**: Mirror production code structure
-8. **Configuration management**: Profile-specific YAML files
-
-This structure provides:
-- Easy navigation and maintenance
-- Clear boundaries between layers
-- Scalability for growing applications
-- Easier refactoring and testing
-- Better collaboration in teams
+GraphQL schema files may be split by feature/type if the configured schema locations discover them. Do not assume arbitrary nested files are loaded; verify startup and schema tests. Migration locations are tool configuration, not a universal Spring convention. Do not package writable production databases, credentials, or deployment-specific absolute paths as source resources.
+
+Mirror production package boundaries in tests. Put reusable fixtures in test scope, not production utility packages. Match tests to actual capabilities: an in-memory observation repository needs concurrency/lifecycle tests, not fabricated JPA tests. See [testing.md](testing.md).
+
+## Structure review
+
+- Does the proposed layout preserve the repository's conventions and feature ownership?
+- Can a reader locate the transport, use case, state owner, and cleanup path together?
+- Is each state store labeled durable, observed, session, cache, or coordination state?
+- Are database/REST/JPA recommendations conditional on actual implementation and dependencies?
+- Are dependency direction and cross-feature access deliberate, without circular wiring?
+- Are configuration, schemas, migrations, tests, and resource lifetimes included in the slice?
+- Have declared versions been distinguished from resolved dependencies and runtime evidence?

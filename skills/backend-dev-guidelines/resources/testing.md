@@ -1,987 +1,346 @@
-# Testing
+# Backend Testing
 
-Comprehensive guide to testing Spring Boot applications with unit tests, integration tests, and GraphQL/REST API testing.
-
----
+Test a behavior at the cheapest boundary that can prove it, then add integration coverage for wiring, security, concurrency, and actual transports. A green mocked service test cannot prove a proxy, schema, socket, transaction, or authentication interceptor works.
 
 ## Table of Contents
 
-1. [Unit Testing with Mockito](#unit-testing-with-mockito)
-2. [Integration Testing](#integration-testing)
-3. [Testing REST Controllers](#testing-rest-controllers)
-4. [Testing GraphQL Controllers](#testing-graphql-controllers)
-5. [Testing Services](#testing-services)
-6. [Testing Repositories](#testing-repositories)
-7. [Best Practices](#best-practices)
-8. [Common Pitfalls](#common-pitfalls)
+- [Inspect the test baseline](#inspect-the-test-baseline)
+- [Boot 3 and Boot 4 compatibility](#boot-3-and-boot-4-compatibility)
+- [Plain unit tests](#plain-unit-tests)
+- [Validation, configuration, and proxy tests](#validation-configuration-and-proxy-tests)
+- [REST execution slices](#rest-execution-slices)
+- [GraphQL execution slices and schema contracts](#graphql-execution-slices-and-schema-contracts)
+- [Transport and security integration](#transport-and-security-integration)
+- [Deadlines, ACKs, retries, and cancellation](#deadlines-acks-retries-and-cancellation)
+- [Reactive streams and deterministic coordination](#reactive-streams-and-deterministic-coordination)
+- [UDP and lifecycle tests](#udp-and-lifecycle-tests)
+- [State, caches, and repositories](#state-caches-and-repositories)
+- [Verification commands and honest reporting](#verification-commands-and-honest-reporting)
+- [Skill maintenance evaluations](#skill-maintenance-evaluations)
 
----
+## Inspect the test baseline
 
-## Unit Testing with Mockito
+Before writing imports or commands, read the parent/BOM, declared Java release, wrapper, Surefire/Failsafe setup, test engines/starters, compiler processors, existing test fixtures, and production runtime path. Check which JDK Maven actually uses. Determine whether the repository is servlet or reactive, how GraphQL reaches its interceptors, which JSON mapper family is active, and whether repositories are in-memory, file-backed, or database-backed.
 
-### Basic Unit Test Structure
+## Boot 3 and Boot 4 compatibility
+
+Select imports from the installed version, not an IDE's first suggestion. The Boot 4 modularization moved slice annotations and introduced feature test starters. Common testing support still includes `org.springframework.boot.test.context.SpringBootTest`, `org.springframework.boot.test.context.runner.ApplicationContextRunner`, and `org.springframework.boot.test.context.TestConfiguration`.
+
+| Annotation | Boot 3 import | Boot 4 import |
+|---|---|---|
+| `WebMvcTest` | `org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest` | `org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest` |
+| `AutoConfigureMockMvc` | `org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc` | `org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc` |
+| `WebFluxTest` | `org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest` | `org.springframework.boot.webflux.test.autoconfigure.WebFluxTest` |
+| `GraphQlTest` | `org.springframework.boot.test.autoconfigure.graphql.GraphQlTest` | `org.springframework.boot.graphql.test.autoconfigure.GraphQlTest` |
+| `AutoConfigureHttpGraphQlTester` | `org.springframework.boot.test.autoconfigure.graphql.tester.AutoConfigureHttpGraphQlTester` | `org.springframework.boot.graphql.test.autoconfigure.tester.AutoConfigureHttpGraphQlTester` |
+| `RestClientTest` | `org.springframework.boot.test.autoconfigure.web.client.RestClientTest` | `org.springframework.boot.restclient.test.autoconfigure.RestClientTest` |
+| `JdbcTest` | `org.springframework.boot.test.autoconfigure.jdbc.JdbcTest` | `org.springframework.boot.jdbc.test.autoconfigure.JdbcTest` |
+| `DataJpaTest` | `org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest` | `org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest` |
+| `ValidationAutoConfiguration` | `org.springframework.boot.autoconfigure.validation.ValidationAutoConfiguration` | `org.springframework.boot.validation.autoconfigure.ValidationAutoConfiguration` |
+
+| Need | Boot 3 test dependencies | Boot 4 test dependencies |
+|---|---|---|
+| General JUnit/Mockito/AssertJ support | `spring-boot-starter-test` | `spring-boot-starter-test` (often supplied transitively by feature test starters) |
+| Servlet MVC slice | general test starter plus installed MVC runtime | `spring-boot-starter-webmvc-test` |
+| WebFlux slice | general test starter plus installed WebFlux runtime | `spring-boot-starter-webflux-test` |
+| GraphQL slice/tester | general test starter + `org.springframework.graphql:spring-graphql-test` | `spring-boot-starter-graphql-test` |
+| Security helpers | `org.springframework.security:spring-security-test` | `spring-boot-starter-security-test` |
+| Validation-focused support | general test starter + validation runtime/provider | `spring-boot-starter-validation-test` and the application's validation runtime/provider |
+| JDBC / JPA slices, only when used | general test starter + installed JDBC / JPA runtime | `spring-boot-starter-jdbc-test` / `spring-boot-starter-data-jpa-test` |
+| Blocking HTTP client slice | general test starter + installed client runtime | `spring-boot-starter-restclient-test` |
+| Reactor assertions | `io.projectreactor:reactor-test` | `io.projectreactor:reactor-test` |
+
+Boot starter coordinates in the table use group `org.springframework.boot`; all test dependencies have test scope. Inspect transitive dependencies before adding redundant starters. A GraphQL test dependency does not alone guarantee the HTTP client/WebSocket implementation required by a transport test is available.
+
+Use `org.springframework.test.context.bean.override.mockito.MockitoBean` for Spring-context mock overrides on **Spring Framework 6.2+**, including Boot 3.4+ and Boot 4. Boot's `@MockBean` (`org.springframework.boot.test.mock.mockito.MockBean`) was deprecated in Boot 3.4 and **removed in Boot 4**. Older Boot 3 releases on Framework 6.0/6.1 need their supported `@MockBean`, not `@MockitoBean` copied from newer examples. Plain unit tests still use Mockito `@Mock` or `mock(...)`; neither annotation overrides a Spring bean by itself.
+
+Jackson 2 uses `com.fasterxml.jackson.databind.ObjectMapper`; Jackson 3 uses `tools.jackson.databind`/`tools.jackson.core`, while annotations remain `com.fasterxml.jackson.annotation`. Inspect the mapper actually wired into each API/protocol. A Boot 4 build can contain intentional Jackson 2 application mappers alongside Jackson 3 dependencies. Do not mechanically rename test imports or assume `new ObjectMapper()` reproduces application serialization modules.
+
+## Plain unit tests
+
+Use real records/domain values and mock external collaborators. Prefer explicit constructors when they make dependencies clear; `@InjectMocks` is optional, not a test architecture. Mockito annotations require `MockitoExtension` or managed initialization/cleanup; manual `mock(...)` does not require the extension.
+
+See the [repository unit tests](complete-examples.md#unit-tests) for immutable-state, missing-resource, and failed-update assertions against production behavior.
+
+Test **one behavior**, not one assertion. Multiple related assertions describe a returned snapshot or error contract well. Name the scenario/outcome, use arrange/act/assert separation when helpful, and avoid shared mutable fixtures across tests.
+
+Use argument captors for the outgoing command/state that matters. Verify absence of a write/send on rejected input, or exact ordering when ordering is itself a safety requirement. Do not impose universal `verifyNoMoreInteractions`: it makes harmless implementation changes fail and is not a substitute for outcome assertions. `verify(mock).method()` already means once; redundant `times(1)` and no-op void stubbing add little.
+
+## Validation, configuration, and proxy tests
+
+Use three separate proofs where applicable:
+
+1. A direct `Validator` test proves constraints on an input object, including nested elements and class-level rules.
+2. A controller/GraphQL execution test proves argument binding, coercion, validation activation, and error mapping.
+3. A Spring-context test of a proxied service proves method validation. A direct `new Service()` test does not run AOP advice.
+
+For `DeviceIdPolicy` from [validation-and-caching.md](validation-and-caching.md), this **Boot 4** context test proves proxy enforcement. Boot 3 uses the validation import from the matrix.
 
 ```java
-package com.company.project.services;
-
+import jakarta.validation.ConstraintViolationException;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.validation.autoconfigure.ValidationAutoConfiguration;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
-@ExtendWith(MockitoExtension.class)
-class RadioServiceTest {
-
-    @Mock
-    private RadioRepository radioRepository;
-
-    @Mock
-    private RadioClient radioClient;
-
-    @InjectMocks
-    private RadioService radioService;
-
-    private Radio testRadio;
-
-    @BeforeEach
-    void setUp() {
-        testRadio = Radio.builder()
-            .id("radio-123")
-            .name("Test Radio")
-            .type(RadioType.TYPE_A)
-            .status(RadioStatus.ACTIVE)
-            .build();
-    }
-
+class DeviceIdPolicyTest {
     @Test
-    void getRadio_whenRadioExists_returnsRadio() {
-        // Given
-        String radioId = "radio-123";
-        when(radioRepository.findById(radioId)).thenReturn(Optional.of(testRadio));
-
-        // When
-        Radio result = radioService.getRadio(radioId);
-
-        // Then
-        assertNotNull(result);
-        assertEquals(radioId, result.getId());
-        assertEquals("Test Radio", result.getName());
-        verify(radioRepository, times(1)).findById(radioId);
-    }
-
-    @Test
-    void getRadio_whenRadioNotFound_throwsException() {
-        // Given
-        String radioId = "nonexistent";
-        when(radioRepository.findById(radioId)).thenReturn(Optional.empty());
-
-        // When & Then
-        assertThrows(ResourceNotFoundException.class, () -> {
-            radioService.getRadio(radioId);
-        });
-        verify(radioRepository, times(1)).findById(radioId);
+    void rejectsBlankIdsThroughTheSpringProxy() {
+        new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(ValidationAutoConfiguration.class))
+                .withBean(DeviceIdPolicy.class)
+                .run(context -> assertThrows(ConstraintViolationException.class,
+                        () -> context.getBean(DeviceIdPolicy.class).requireDeviceId(" ")));
     }
 }
 ```
 
-### Mockito Verification
+This assumes default method-validation exception behavior; explicitly configured adapted violations may use a different exception type. Likewise, MVC 6.1+ native method validation is not the same path as service `@Validated` AOP.
+
+Use the binding tests in [configuration.md](configuration.md) for absent nested sections/defaults, explicit unit overrides, and startup rejection. Add invalid zero/negative durations, malformed units, missing required secrets, profile combinations, and non-positive capacity. Check the relevant startup cause, not just “anything failed.” Test allowlisted logging/redaction with nested secrets and sensitive parent sections; assert a synthetic sentinel secret never appears, without using production credentials.
+
+## REST execution slices
+
+Use `@WebMvcTest(Controller.class)` for a servlet controller and `MockMvc`; use the reactive slice/client for WebFlux. Import the actual error advice, validation, converters, and security configuration needed for the behavior. Mock only collaborators outside that slice.
+
+**Boot 4 example**, assuming an existing `DeviceRestController` delegates a GET to `DeviceQueries.requireName(String)` and returns a DTO containing `name`:
 
 ```java
-@Test
-void createRadio_whenValidInput_createsRadioAndSyncs() {
-    // Given
-    CreateRadioCommand command = CreateRadioCommand.builder()
-        .name("New Radio")
-        .type(RadioType.TYPE_A)
-        .build();
-
-    Radio savedRadio = Radio.builder()
-        .id("radio-456")
-        .name("New Radio")
-        .type(RadioType.TYPE_A)
-        .status(RadioStatus.INACTIVE)
-        .build();
-
-    when(radioRepository.save(any(Radio.class))).thenReturn(savedRadio);
-    doNothing().when(radioClient).createRadio(any(Radio.class));
-
-    // When
-    Radio result = radioService.createRadio(command);
-
-    // Then
-    assertNotNull(result);
-    assertEquals("radio-456", result.getId());
-    assertEquals("New Radio", result.getName());
-
-    // Verify interactions
-    verify(radioRepository, times(1)).save(any(Radio.class));
-    verify(radioClient, times(1)).createRadio(savedRadio);
-    verifyNoMoreInteractions(radioRepository, radioClient);
-}
-```
-
-### Argument Captors
-
-```java
-@Test
-void updateRadio_whenValidUpdate_savesCorrectRadio() {
-    // Given
-    String radioId = "radio-123";
-    UpdateRadioCommand command = UpdateRadioCommand.builder()
-        .name("Updated Name")
-        .status(RadioStatus.ACTIVE)
-        .build();
-
-    when(radioRepository.findById(radioId)).thenReturn(Optional.of(testRadio));
-    when(radioRepository.save(any(Radio.class))).thenReturn(testRadio);
-
-    ArgumentCaptor<Radio> radioCaptor = ArgumentCaptor.forClass(Radio.class);
-
-    // When
-    radioService.updateRadio(radioId, command);
-
-    // Then
-    verify(radioRepository).save(radioCaptor.capture());
-    Radio capturedRadio = radioCaptor.getValue();
-
-    assertEquals("Updated Name", capturedRadio.getName());
-    assertEquals(RadioStatus.ACTIVE, capturedRadio.getStatus());
-}
-```
-
-### Exception Testing
-
-```java
-@Test
-void createRadio_whenNameAlreadyExists_throwsException() {
-    // Given
-    CreateRadioCommand command = CreateRadioCommand.builder()
-        .name("Existing Radio")
-        .type(RadioType.TYPE_A)
-        .build();
-
-    when(radioRepository.existsByName("Existing Radio")).thenReturn(true);
-
-    // When & Then
-    ResourceAlreadyExistsException exception = assertThrows(
-        ResourceAlreadyExistsException.class,
-        () -> radioService.createRadio(command)
-    );
-
-    assertEquals("Radio already exists with name: Existing Radio", exception.getMessage());
-    verify(radioRepository, times(1)).existsByName("Existing Radio");
-    verify(radioRepository, never()).save(any(Radio.class));
-}
-```
-
----
-
-## Integration Testing
-
-### Spring Boot Test
-
-```java
-package com.company.project;
-
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
-import static org.junit.jupiter.api.Assertions.*;
-
-@SpringBootTest
-@ActiveProfiles("test")
-class RadioIntegrationTest {
-
-    @Autowired
-    private RadioService radioService;
-
-    @Autowired
-    private RadioRepository radioRepository;
-
-    @Test
-    void createRadio_fullFlow_createsRadioSuccessfully() {
-        // Given
-        CreateRadioCommand command = CreateRadioCommand.builder()
-            .name("Integration Test Radio")
-            .type(RadioType.TYPE_A)
-            .build();
-
-        // When
-        Radio created = radioService.createRadio(command);
-
-        // Then
-        assertNotNull(created.getId());
-        assertEquals("Integration Test Radio", created.getName());
-
-        // Verify it's in repository
-        Radio found = radioRepository.findById(created.getId()).orElseThrow();
-        assertEquals(created.getId(), found.getId());
-        assertEquals(created.getName(), found.getName());
-    }
-}
-```
-
-### Test Configuration
-
-```java
-package com.company.project.config;
-
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Primary;
-
-@TestConfiguration
-public class TestConfig {
-
-    @Bean
-    @Primary
-    public RadioClient mockRadioClient() {
-        return new MockRadioClient();
-    }
-
-    @Bean
-    @Primary
-    public CacheManager testCacheManager() {
-        return new CaffeineCacheManager("radios", "links");
-    }
-}
-```
-
-### application-test.yml
-
-```yaml
-spring:
-  cache:
-    type: caffeine
-
-app:
-  configs:
-    http-timeout-ms: 1000
-    cache-size: 10
-    max-retries: 1
-
-logging:
-  level:
-    root: INFO
-    com.company.project: DEBUG
-```
-
----
-
-## Testing REST Controllers
-
-### MockMvc Test
-
-```java
-package com.company.project.controllers;
-
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.http.MediaType;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(RadioRestController.class)
-class RadioRestControllerTest {
-
-    @Autowired
-    private MockMvc mockMvc;
-
-    @Autowired
-    private ObjectMapper objectMapper;
-
-    @MockBean
-    private RadioService radioService;
-
-    @MockBean
-    private RadioMapper radioMapper;
+@WebMvcTest(DeviceRestController.class)
+class DeviceRestControllerTest {
+    @Autowired MockMvc mvc;
+    @MockitoBean DeviceQueries queries;
 
     @Test
-    void getRadio_whenRadioExists_returnsRadio() throws Exception {
-        // Given
-        String radioId = "radio-123";
-        Radio radio = Radio.builder()
-            .id(radioId)
-            .name("Test Radio")
-            .build();
+    void returnsTheDeviceName() throws Exception {
+        when(queries.requireName("device-1")).thenReturn("Sensor");
 
-        RadioDto dto = new RadioDto();
-        dto.setId(radioId);
-        dto.setName("Test Radio");
-
-        when(radioService.getRadio(radioId)).thenReturn(radio);
-        when(radioMapper.toDto(radio)).thenReturn(dto);
-
-        // When & Then
-        mockMvc.perform(get("/api/v1/radios/{radioId}", radioId))
-            .andExpect(status().isOk())
-            .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-            .andExpect(jsonPath("$.id").value(radioId))
-            .andExpect(jsonPath("$.name").value("Test Radio"));
-
-        verify(radioService, times(1)).getRadio(radioId);
-    }
-
-    @Test
-    void createRadio_whenValidInput_returnsCreated() throws Exception {
-        // Given
-        CreateRadioRequest request = new CreateRadioRequest();
-        request.setName("New Radio");
-        request.setType("TYPE_A");
-
-        Radio created = Radio.builder()
-            .id("radio-456")
-            .name("New Radio")
-            .type(RadioType.TYPE_A)
-            .build();
-
-        RadioDto dto = new RadioDto();
-        dto.setId("radio-456");
-        dto.setName("New Radio");
-
-        when(radioService.createRadio(any())).thenReturn(created);
-        when(radioMapper.toDto(created)).thenReturn(dto);
-
-        // When & Then
-        mockMvc.perform(post("/api/v1/radios")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isCreated())
-            .andExpect(header().string("Location", "/api/v1/radios/radio-456"))
-            .andExpect(jsonPath("$.id").value("radio-456"))
-            .andExpect(jsonPath("$.name").value("New Radio"));
-    }
-
-    @Test
-    void getRadio_whenRadioNotFound_returnsNotFound() throws Exception {
-        // Given
-        String radioId = "nonexistent";
-        when(radioService.getRadio(radioId))
-            .thenThrow(new ResourceNotFoundException("Radio", radioId));
-
-        // When & Then
-        mockMvc.perform(get("/api/v1/radios/{radioId}", radioId))
-            .andExpect(status().isNotFound())
-            .andExpect(jsonPath("$.message").value("Radio not found with ID: nonexistent"));
+        mvc.perform(get("/api/devices/device-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Sensor"));
     }
 }
 ```
 
----
+This deliberately does not pretend to configure an application's authentication. For a protected route, import the real relevant security chain and authenticate using its supported test mechanism; add CSRF when that chain requires it. Do not disable filters just to make this sample pass. A default slice security chain is not proof of the production one. Test malformed/invalid body, missing fields, unknown enums, not-found, conflict, and authorization denial; assert no side effect on rejected requests. Assert a `Location` header only if the controller's actual creation contract sets it.
 
-## Testing GraphQL Controllers
+## GraphQL execution slices and schema contracts
 
-### GraphQL Testing with HttpGraphQlTester
+`@GraphQlTest` configures GraphQL **execution**, not an HTTP server. Inject `org.springframework.graphql.test.tester.GraphQlTester` (typically backed by execution infrastructure), **not `HttpGraphQlTester`**. An execution slice does not prove HTTP filters, WebSocket handshake/authentication, or transport interceptors run.
+
+**Boot 4 example**, assuming the application's schema contains `type Query { deviceName(id: ID!): String! }` and an existing `DeviceQueryController` delegates to `DeviceQueries.requireName(String)`:
 
 ```java
-package com.company.project.controllers;
-
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.graphql.GraphQlTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.graphql.test.tester.HttpGraphQlTester;
-import static org.mockito.Mockito.*;
+import org.springframework.boot.graphql.test.autoconfigure.GraphQlTest;
+import org.springframework.graphql.test.tester.GraphQlTester;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import static org.mockito.Mockito.when;
 
-@GraphQlTest(LinkController.class)
-class LinkControllerTest {
-
-    @Autowired
-    private HttpGraphQlTester graphQlTester;
-
-    @MockBean
-    private LinkService linkService;
-
-    @MockBean
-    private FrontendMapper frontendMapper;
+@GraphQlTest(DeviceQueryController.class)
+class DeviceQueryControllerTest {
+    @Autowired GraphQlTester graphQl;
+    @MockitoBean DeviceQueries queries;
 
     @Test
-    void link_whenLinkExists_returnsLink() {
-        // Given
-        String radioId = "radio-123";
-        String linkId = "link-456";
+    void resolvesTheRequestedDevice() {
+        when(queries.requireName("device-1")).thenReturn("Sensor");
 
-        Link link = Link.builder()
-            .id(linkId)
-            .name("Test Link")
-            .status(LinkStatus.ACTIVE)
-            .build();
-
-        LinkGql linkGql = new LinkGql(linkId, "Test Link", LinkStatusGql.ACTIVE, null);
-
-        when(linkService.getLink(radioId, linkId)).thenReturn(link);
-        when(frontendMapper.toGql(link)).thenReturn(linkGql);
-
-        // When & Then
-        graphQlTester.document("""
-                query {
-                    link(radioId: "radio-123", linkId: "link-456") {
-                        id
-                        name
-                        status
-                    }
-                }
-                """)
-            .execute()
-            .path("link.id").entity(String.class).isEqualTo(linkId)
-            .path("link.name").entity(String.class).isEqualTo("Test Link")
-            .path("link.status").entity(String.class).isEqualTo("ACTIVE");
-
-        verify(linkService, times(1)).getLink(radioId, linkId);
-    }
-
-    @Test
-    void updateLink_whenValidInput_updatesLink() {
-        // Given
-        UpdateLinkInput input = new UpdateLinkInput(
-            "link-456",
-            "radio-123",
-            "Updated Link",
-            LinkStatusGql.ACTIVE
-        );
-
-        Link updated = Link.builder()
-            .id("link-456")
-            .name("Updated Link")
-            .status(LinkStatus.ACTIVE)
-            .build();
-
-        LinkGql linkGql = new LinkGql("link-456", "Updated Link", LinkStatusGql.ACTIVE, null);
-
-        when(frontendMapper.toDomain(input)).thenReturn(updated);
-        when(linkService.updateLink(any(Link.class))).thenReturn(updated);
-        when(frontendMapper.toGql(updated)).thenReturn(linkGql);
-
-        // When & Then
-        graphQlTester.document("""
-                mutation($input: UpdateLinkInput!) {
-                    updateLink(input: $input) {
-                        id
-                        name
-                        status
-                    }
-                }
-                """)
-            .variable("input", Map.of(
-                "linkId", "link-456",
-                "radioId", "radio-123",
-                "name", "Updated Link",
-                "status", "ACTIVE"
-            ))
-            .execute()
-            .path("updateLink.name").entity(String.class).isEqualTo("Updated Link");
-    }
-
-    @Test
-    void link_whenLinkNotFound_returnsError() {
-        // Given
-        String radioId = "radio-123";
-        String linkId = "nonexistent";
-
-        when(linkService.getLink(radioId, linkId))
-            .thenThrow(new ResourceNotFoundException("Link", linkId));
-
-        // When & Then
-        graphQlTester.document("""
-                query {
-                    link(radioId: "radio-123", linkId: "nonexistent") {
-                        id
-                        name
-                    }
-                }
-                """)
-            .execute()
-            .errors()
-            .expect(error -> error.getMessage().contains("Link not found"));
+        graphQl.document("query($id: ID!) { deviceName(id: $id) }")
+                .variable("id", "device-1")
+                .execute()
+                .path("deviceName").entity(String.class).isEqualTo("Sensor");
     }
 }
 ```
 
----
+Use the application's real schema, scalar wiring, mappers, exception resolvers, and enum values; mock a mapper only when mapping is outside the behavior being tested. A slice does not component-scan every `@Configuration`/service automatically: explicitly import required wiring, without importing unrelated startup/transport work.
 
-## Testing Services
+- Assert successful data and absence of unexpected errors. For failures, assert error path and stable `extensions` classification; do not rely solely on a substring in a message.
+- Test missing and explicit-null input separately, list versus element nullability, Java/schema enum parity, custom scalar parsing/serialization/range, and non-null propagation. Unknown enum input may fail coercion before the resolver runs; verify no side effect.
+- Use variables/document fixtures for normal queries. For presence tests, remember `Map.of` rejects null values; build a map that can represent an explicit null, or use an explicit GraphQL `null` literal.
+- Include fragments, aliases, named operations, multiple operations with `operationName`, and mixed public/protected selections in security tests. Do not classify a document as safe merely because one selected field is public.
+- Subscription execution tests prove resolver/publisher behavior. They do not prove the WebSocket protocol, credentials from connection initialization, connection closure, or session cleanup.
 
-### Service Unit Tests
+## Transport and security integration
 
-```java
-@ExtendWith(MockitoExtension.class)
-class LinkServiceTest {
+Use `@SpringBootTest(webEnvironment = RANDOM_PORT)` for the actual server path. For HTTP GraphQL, use `HttpGraphQlTester` with the matching `@AutoConfigureHttpGraphQlTester` when supported/wired, or an explicitly constructed installed HTTP client with connect/request bounds. For subscriptions and WebSocket authentication, connect with `WebSocketGraphQlTester` or the installed real WebSocket client. Close the client/tester and owned resources after each test.
 
-    @Mock
-    private RadioService radioService;
+Load the real transport filters, GraphQL interceptors, method authorization, error mapping, and session ownership enforcement. A mocked principal/service that bypasses these components cannot prove security. Use isolated synthetic credential/RBAC fixtures and test-only keys; ensure fixture paths cannot fall back to production credentials. Explicitly disable development/security bypass in these tests and assert the resulting denial behavior.
 
-    @Mock
-    private LinkRepository linkRepository;
+Cover at least:
 
-    @Mock
-    private RadioClient radioClient;
+| Scenario | Required proof |
+|---|---|
+| Anonymous protected request | Denied by the real chain; no device/write effect |
+| Public login/health/introspection | Only the intended public policy is allowed; do not assume introspection must be public |
+| Invalid/expired/revoked token | Rejected with stable public error contract |
+| Authenticated but insufficient permission | Forbidden; no command sent |
+| Mixed public/protected document | A public selection cannot whitelist protected fields |
+| Multiple named operations, aliases/fragments | Authorization follows the selected operation and actual fields |
+| Supplied client/session ID belongs to another identity | Keepalive, logout, cancellation and subscriptions cannot steal ownership |
+| Token/session expiry while connected | New/continuing operations follow the documented expiry policy; cleanup occurs |
+| Disconnect/logout/expiry | Session, stream, timers and discovery registrations are released exactly as intended |
+| Wrong transport credentials | HTTP headers and WebSocket connection-init credentials are tested independently |
 
-    @InjectMocks
-    private LinkService linkService;
+GraphQL execution errors often travel in an HTTP 200 response; assert the GraphQL error and side-effect contract as well as status. Conversely, pre-execution HTTP rejection may have a transport status with no GraphQL data. Do not force one error shape onto every layer. Session expiry tests should advance an injected clock/run a captured cleanup callback where possible, rather than waiting for wall-clock TTLs.
 
-    private Radio testRadio;
-    private Link testLink;
+## Deadlines, ACKs, retries, and cancellation
 
-    @BeforeEach
-    void setUp() {
-        testLink = Link.builder()
-            .id("link-123")
-            .name("Test Link")
-            .status(LinkStatus.ACTIVE)
-            .build();
+Model the actual operation phases: admission/conflict registration → command submission → transport ACK → observed confirmation → worker exit. Cover these independently, with controlled futures/callbacks rather than a real device or random simulation latency.
 
-        testRadio = Radio.builder()
-            .id("radio-123")
-            .name("Test Radio")
-            .links(List.of(testLink))
-            .build();
-    }
+- One overall deadline covers all phases; a retry/confirmation must not reset it. Test timeout before start, during submission/ACK, and during confirmation.
+- ACK success does not prove the observed state reached the requested value. Confirmation failure/empty completion should have an explicit outcome, not accidental success.
+- Hold an uncooperative worker with a test-controlled gate, expire its deadline, and verify a conflicting operation remains rejected until that worker actually exits. A completed timeout future is not proof that the conflict slot is free.
+- Caller cancellation must follow the chosen observation-versus-execution contract; test that it does not prematurely release a running operation, or test real worker/transport cancellation if promised. Include interrupted waits and late responses.
+- Test retry classification, attempt limits, backoff/deadline exhaustion, fresh submissions, and no retry of validation/permission/domain rejection. Retry a “known not delivered” failure separately from an ambiguous ACK timeout; ambiguous delivery requires an idempotency/deduplication contract.
+- Inject executor rejection and partial startup failure; verify registration rollback. Test shutdown refusing new work, bounded waiting, and cleanup when workers ignore interruption.
+- Test per-resource conflict matrices and independent operations concurrently. A sequential “submit twice” test does not prove atomic registration under contention.
+- Late ACKs/results must not complete a newer operation or overwrite newer observed state without the intended correlation/version policy.
 
-    @Test
-    void getLink_whenLinkExists_returnsLink() {
-        // Given
-        String radioId = "radio-123";
-        String linkId = "link-123";
-        when(radioService.getRadio(radioId)).thenReturn(testRadio);
+Use bounded `future.get(timeout, unit)`, latch waits, and test-level safeguards. Avoid preemptive timeouts around transaction/thread-local-sensitive code unless the isolation effects are understood. Always release test-controlled gates and close executors/subscriptions in `finally` so a failed assertion does not strand workers.
 
-        // When
-        Link result = linkService.getLink(radioId, linkId);
+## Reactive streams and deterministic coordination
 
-        // Then
-        assertNotNull(result);
-        assertEquals(linkId, result.getId());
-        verify(radioService, times(1)).getRadio(radioId);
-    }
-
-    @Test
-    void deleteLink_whenLinkIsActive_throwsException() {
-        // Given
-        String radioId = "radio-123";
-        String linkId = "link-123";
-        when(radioService.getRadio(radioId)).thenReturn(testRadio);
-
-        // When & Then
-        InvalidOperationException exception = assertThrows(
-            InvalidOperationException.class,
-            () -> linkService.deleteLink(radioId, linkId)
-        );
-
-        assertTrue(exception.getMessage().contains("Link must be deactivated"));
-        verify(linkRepository, never()).deleteById(anyString());
-    }
-}
-```
-
----
-
-## Testing Repositories
-
-### Repository Tests
+Use bounded StepVerifier verification and drive emission from verifier callbacks after subscription. This self-contained example proves replay of the latest immutable snapshot and a subsequent update:
 
 ```java
-package com.company.project.repositories;
-
+import java.time.Duration;
+import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.BeforeEach;
-import static org.junit.jupiter.api.Assertions.*;
+import reactor.core.publisher.Sinks;
+import reactor.test.StepVerifier;
 
-class RadioRepositoryTest {
-
-    private RadioRepository radioRepository;
-    private Radio testRadio;
-
-    @BeforeEach
-    void setUp() {
-        radioRepository = new RadioRepository();
-
-        testRadio = Radio.builder()
-            .name("Test Radio")
-            .type(RadioType.TYPE_A)
-            .status(RadioStatus.ACTIVE)
-            .build();
-    }
-
+class SnapshotReplayTest {
     @Test
-    void save_whenNewRadio_generatesIdAndSaves() {
-        // When
-        Radio saved = radioRepository.save(testRadio);
+    void replaysLatestAndThenPublishesUpdates() {
+        Sinks.Many<List<String>> sink = Sinks.many().replay().latest();
+        sink.tryEmitNext(List.of("initial")).orThrow();
 
-        // Then
-        assertNotNull(saved.getId());
-        assertEquals("Test Radio", saved.getName());
-
-        // Verify it can be retrieved
-        Optional<Radio> found = radioRepository.findById(saved.getId());
-        assertTrue(found.isPresent());
-        assertEquals(saved.getId(), found.get().getId());
-    }
-
-    @Test
-    void findById_whenRadioExists_returnsRadio() {
-        // Given
-        Radio saved = radioRepository.save(testRadio);
-
-        // When
-        Optional<Radio> result = radioRepository.findById(saved.getId());
-
-        // Then
-        assertTrue(result.isPresent());
-        assertEquals(saved.getId(), result.get().getId());
-    }
-
-    @Test
-    void findById_whenRadioNotFound_returnsEmpty() {
-        // When
-        Optional<Radio> result = radioRepository.findById("nonexistent");
-
-        // Then
-        assertFalse(result.isPresent());
-    }
-
-    @Test
-    void deleteById_whenRadioExists_deletesRadio() {
-        // Given
-        Radio saved = radioRepository.save(testRadio);
-        String radioId = saved.getId();
-
-        // When
-        radioRepository.deleteById(radioId);
-
-        // Then
-        Optional<Radio> result = radioRepository.findById(radioId);
-        assertFalse(result.isPresent());
-    }
-
-    @Test
-    void existsByName_whenNameExists_returnsTrue() {
-        // Given
-        radioRepository.save(testRadio);
-
-        // When
-        boolean exists = radioRepository.existsByName("Test Radio");
-
-        // Then
-        assertTrue(exists);
-    }
-
-    @Test
-    void existsByName_whenNameNotFound_returnsFalse() {
-        // When
-        boolean exists = radioRepository.existsByName("Nonexistent");
-
-        // Then
-        assertFalse(exists);
+        StepVerifier.create(sink.asFlux())
+                .expectNext(List.of("initial"))
+                .then(() -> sink.tryEmitNext(List.of("updated")).orThrow())
+                .expectNext(List.of("updated"))
+                .thenCancel()
+                .verify(Duration.ofSeconds(2));
     }
 }
 ```
 
----
+For production tests, exercise the actual publisher, not just a standalone Reactor sink. Add tests for late subscribers, empty initial state, immutable snapshot ownership, ordering, concurrent emitters, duplicate/coalesced updates if specified, and the actual overflow/failure policy. A latest-snapshot stream is not a durable event log; do not demand replay of every past event unless promised.
 
-## Best Practices
+Request limited demand to test slow consumers/backpressure. Verify memory/delivery policy rather than assuming a sink name proves bounded behavior. Test cancellation/unsubscribe cleanup, reconnect, completion/error policy, registration after shutdown, and disposal while emission is in progress. Do not emit before a non-replaying source has subscribers and then call the missing update a race-free test.
 
-### 1. Follow AAA Pattern
+Use `StepVerifier.withVirtualTime(() -> pipelineCreatedAfterVirtualClockInstallation)` for compatible Reactor timers, with bounded terminal verification. It does not control arbitrary JDK executors, sockets, `Thread.sleep`, or unrelated scheduled futures. For those, inject a clock/scheduler or capture callbacks and trigger them explicitly. A latch must have a bounded await; avoid sleeps and unbounded polling as synchronization.
 
-```java
-// GOOD: Arrange-Act-Assert
-@Test
-void getRadio_whenRadioExists_returnsRadio() {
-    // Arrange (Given)
-    String radioId = "radio-123";
-    when(radioRepository.findById(radioId)).thenReturn(Optional.of(testRadio));
+## UDP and lifecycle tests
 
-    // Act (When)
-    Radio result = radioService.getRadio(radioId);
+Separate parser unit tests, deterministic dispatch/lifecycle tests, and a small real loopback transport integration test. Use an ephemeral loopback port (`0`), bounded receives/futures, local interfaces, and test-owned channels/executors. Do not depend on device hardware, production broadcasts, fixed ports, or a particular network adapter name.
 
-    // Assert (Then)
-    assertNotNull(result);
-    assertEquals(radioId, result.getId());
-}
+| Boundary | Cases |
+|---|---|
+| Parser | Empty/short/malformed payload, invalid encoding/version/opcode, inconsistent declared lengths, unsupported values, exact legal boundaries |
+| Buffer ownership | Receiver reuse cannot mutate a queued payload; length/offset are honored |
+| Truncation | Maximum valid payload, oversize/truncated datagram, full-buffer ambiguity and chosen rejection rule |
+| Saturation | Bounded queue/executor rejection, explicit drop/coalesce policy, observable accounting, receiver remains usable |
+| Handler failure | One malformed packet/throwing handler cannot poison later valid traffic |
+| Startup | Submission rejection and later-channel bind failure roll back running state, channels and registrations |
+| Stop | Idle and in-flight stop, repeated stop, owned-resource close, bounded loop exit, no new registration after close |
+| Recovery | Explicit restart or automatic retry according to the implemented policy; never assert automatic recovery unless it exists |
 
-// BAD: Mixed concerns
-@Test
-void test() {
-    when(radioRepository.findById("123")).thenReturn(Optional.of(testRadio));
-    Radio result = radioService.getRadio("123");
-    assertNotNull(result);
-    when(radioRepository.findById("456")).thenReturn(Optional.empty());
-    assertThrows(Exception.class, () -> radioService.getRadio("456"));
-}
+Inject a rejecting executor for saturation tests instead of flooding the OS and hoping packets drop predictably. Use a blocked handler gate to prove in-flight behavior. For genuine loopback tests, signal receipt with a bounded latch/future; do not sleep and inspect logs. Confirm both malformed traffic rejection and subsequent valid-message recovery.
+
+## State, caches, and repositories
+
+Test the implementation actually in use:
+
+- **In-memory repository:** create a fresh instance per test. Verify CRUD/lookup, immutable snapshots, atomic update/conflict behavior, observations/replay, and cleanup as appropriate. Direct construction does not test repository method-validation proxies.
+- **File-backed credentials/policy:** use test resources or temporary test-owned files, with malformed/missing/duplicate entries and safe failure behavior. Never load production credentials or print them on assertion failure.
+- **Actual JDBC/JPA repository:** choose the appropriate installed slice and an isolated embedded database or disposable instance of the production engine. Prove dialect/migration/constraint/transaction behavior on the real engine when those details matter. Driver dependencies alone are not a reason to add persistence tests.
+- **Sessions/registries:** verify ownership, expiry, logout/revocation cleanup, concurrent registration, and refusal after close. Do not treat security state as a disposable cache.
+- **Disposable caches:** call the proxied bean to prove hit/miss behavior and actual source call counts; test tenant-key separation, immutable hits, null/negative lookup contract, load failures, size/TTL via a controllable ticker, and item/list invalidation. Test a warm-cache unauthorized call. Verify transaction commit/rollback ordering only when transactions exist.
+
+Use fresh state, unique namespaces, temporary directories, or disposable test databases. Cleanup must target **test-owned** resources only; never recommend unqualified `deleteAll()` against a profile that might resolve to production. Test-managed transactions do not automatically roll back work done by a separate server/async thread. `@ActiveProfiles("test")` selects configuration; it does not prove that configuration is isolated or that every bean is replaced.
+
+`@TestConfiguration` must be explicitly imported when appropriate. `@Primary` adds a preferred bean; it does not prevent a production client from being constructed or starting background work. Prefer a supported bean override or an explicit test-safe conditional configuration when startup side effects must be excluded.
+
+## Verification commands and honest reporting
+
+Run the target repository's wrapper from its root with the required JDK and isolated fixtures. Choose the commands needed for the change; the following is a reference, not a mandatory sequence. Inspect dependency details for build/migration issues, run focused regression tests, then required integration/quality checks.
+
+```powershell
+.\mvnw.cmd -version
+.\mvnw.cmd help:effective-pom
+.\mvnw.cmd dependency:tree
+.\mvnw.cmd "-Dtest=TransportPropertiesTest,DeviceIdPolicyTest" test
+.\mvnw.cmd verify
 ```
 
-### 2. Descriptive Test Names
+Use `./mvnw` on POSIX. Select focused tests that actually exist. `test` compiles production and test sources and runs Surefire tests; `verify` reaches packaging and configured integration/quality checks. `package` is sufficient when verifying only packaging, while integration tests often require Failsafe's `verify` lifecycle. Inspect the POM rather than assuming every `*IT` is discovered or `verify` automatically enables a dormant integration-test profile.
 
-```java
-// GOOD: Descriptive names
-@Test
-void getRadio_whenRadioExists_returnsRadio() { }
+For Gradle, use the existing task/module names:
 
-@Test
-void getRadio_whenRadioNotFound_throwsResourceNotFoundException() { }
-
-@Test
-void createRadio_whenNameAlreadyExists_throwsResourceAlreadyExistsException() { }
-
-// BAD: Unclear names
-@Test
-void test1() { }
-
-@Test
-void testGetRadio() { }
-
-@Test
-void shouldWork() { }
+```powershell
+.\gradlew.bat --version
+.\gradlew.bat test --tests "com.example.backend.TransportPropertiesTest"
+.\gradlew.bat check
 ```
 
-### 3. Test One Thing Per Test
+Use `./gradlew` on POSIX. `check` runs configured verification tasks, not necessarily every integration test or packaging task. Use `build` when packaging is required and confirm custom suites are wired into the chosen lifecycle. Read JUnit XML/HTML reports under the configured build directory for counts and skips.
 
-```java
-// GOOD: One assertion per test
-@Test
-void getRadio_whenRadioExists_returnsRadioWithCorrectId() {
-    Radio result = radioService.getRadio("radio-123");
-    assertEquals("radio-123", result.getId());
-}
+- Confirm wrapper/JDK compatibility and resolved dependencies before treating a compiler failure as an application regression. Modern annotation processors must be configured for production **and** test sources when used.
+- Record executed test counts, failures, errors, and skips from Surefire/Failsafe reports. Check excluded names/tags/profiles, `@Disabled`, `-DskipTests`, and nested test discovery. JUnit Jupiter nested test containers normally require `@Nested`; a nested class that merely contains `@Test` methods may not run.
+- A successful `test-compile` proves compilation only. `-DskipTests package` is not a passing test run; `-Dmaven.test.skip=true` can skip test compilation too. Do not “fix” a failing test by silently disabling it.
+- JaCoCo `report` generates a report. Coverage is enforced only if an actual `check` execution/rules or another gate runs; inspect its phase, includes/excludes, and the report's executed classes. Do not invent a threshold or equate coverage percentage with correctness.
+- Network-restricted dependency resolution, unavailable JDKs/containers, port permissions, missing test secrets, and absent hardware are environmental blockers. State which command stopped and why; do not report the suite as passed or weaken production validation to bypass the environment.
 
-@Test
-void getRadio_whenRadioExists_returnsRadioWithCorrectName() {
-    Radio result = radioService.getRadio("radio-123");
-    assertEquals("Test Radio", result.getName());
-}
+A useful completion report separates **inspected**, **executed**, and **not verified**. Example: “Inspected build, schema, and security wiring. Ran the focused configuration/proxy tests: 5 executed, 0 failures, 0 skipped. Full verification blocked before tests by an unavailable toolchain. HTTP/WebSocket and hardware behavior not verified.” Replace those sample counts with actual report evidence; never copy them as a result.
 
-// BAD: Testing multiple things
-@Test
-void getRadio_test() {
-    Radio result = radioService.getRadio("radio-123");
-    assertEquals("radio-123", result.getId());
-    assertEquals("Test Radio", result.getName());
-    assertEquals(RadioStatus.ACTIVE, result.getStatus());
-    // If first assertion fails, others don't run
-}
-```
+## Skill maintenance evaluations
 
-### 4. Use @BeforeEach for Common Setup
+When changing this skill, use these scenarios as acceptance cases, not as claims that the target application already implements the behavior. Supply the stated build/code facts, then check the resulting plan, examples, and verification choices. Run important cases in fresh conversations so prior knowledge cannot hide a missing instruction.
 
-```java
-// GOOD: Common setup in @BeforeEach
-@BeforeEach
-void setUp() {
-    testRadio = Radio.builder()
-        .id("radio-123")
-        .name("Test Radio")
-        .build();
-}
+| Scenario | Expected guidance | Fail the evaluation if |
+|---|---|---|
+| Add a new feature with a device command and observed result | Identify capability ownership; show feature-local production/schema/test paths; implement and verify an observation slice and command slice; list scanning/config/permission/transport wiring | It gives only abstract principles or a directory skeleton, builds horizontal layers first, or places every feature's classes in global layer packages |
+| Extend an existing command coordinator | Show a lazy command supplier, feature operation type, named confirmation predicate, independent ingestion, future-returning controller, and bounded deterministic tests | It substitutes bare `@Async`, creates a private worker/retry registry, or treats requested/stale state as observed confirmation |
+| Boot 4: add a protected device-status subscription | `@SubscriptionMapping`, explicit resource access, replay/demand contract, cleanup, Boot 4 test imports, execution and actual WebSocket checks | It injects an HTTP tester into an execution-only slice, trusts a supplied client ID, or chooses an unbounded queue without a policy |
+| Boot 3.3: fix controller validation without a framework upgrade | Version-compatible imports and `@MockBean` where a context override is needed; test the actual validation path | It introduces Boot 4 imports or Framework 6.2-only `@MockitoBean`, or upgrades dependencies just to fit a template |
+| ACK times out while the worker ignores interruption | Distinguish timeout from termination/unknown delivery, retain conflict ownership as needed, bound observation cleanup, test late completion | It automatically retries an unsafe command or declares the device free just because the result future timed out |
+| Nested transport config has a zero duration and an absent section | Test nested defaults and actual binding/validation; reject zero via a supported duration constraint/predicate | It puts numeric `@Positive` on `Duration`, relies on Jackson annotations for binding, or tests only direct record construction |
+| Build declares SQLite, but no datasource/repository implementation exists | State that storage use/durability is unproven; add persistence only if the requested feature needs it | It invents JPA entities, assumes a working SQLite database, or claims crash recovery from the driver dependency |
+| Patch distinguishes omission, explicit null, and a value | Preserve presence through binding, validate allowed changes, construct a valid replacement or intentional update | It applies blanket null-ignore mapping, permits protected-field changes, or claims default MapStruct null mapping always throws |
+| Cached mutable output and per-user access check | Choose immutable cached values or copy outside the cache; authorize every hit and miss; scope keys and invalidation | It copies only inside `@Cacheable`, puts result-based vetoes in `condition`, or lets a warm cache bypass authorization |
+| Fix one REST status mapping in an established layer-based app | Read the REST/error path and callers, preserve packages and envelope, add a focused regression check | It loads every reference, reorganizes packages, or introduces command orchestration |
+| Review a Java service without requesting edits | Trace callers and report concrete correctness findings with file/line evidence | It edits files or reports hypothetical risks as demonstrated defects |
 
-@Test
-void test1() {
-    // Use testRadio
-}
+For each evaluation, require a coherent end-to-end slice, correct resource selection, and a truthful statement of unexecuted checks. Do not reward extra layers or newer dependencies unless the supplied task requires them.
 
-@Test
-void test2() {
-    // Use testRadio
-}
+Also regression-test activation with the actual prompt hook:
 
-// BAD: Duplicate setup
-@Test
-void test1() {
-    Radio testRadio = Radio.builder()
-        .id("radio-123")
-        .name("Test Radio")
-        .build();
-}
+| Prompt | Backend skill suggested? |
+|---|---|
+| `Add backend JWT authorization tests` | Yes |
+| `Fix Java virtual-thread shutdown` | Yes |
+| `Add a GraphQL subscription resolver` | Yes |
+| `Fix validation in a Spring Boot 3.3 controller` | Yes |
+| `Review a MapStruct patch mapping` | Yes |
+| `Fix React form validation` | No |
+| `Fix Apollo client GraphQL subscription caching` | No |
+| `Fix frontend WebSocket reconnect authentication` | No |
+| `Review this Git repository` | No |
+| `Add a controller to an Express backend` | No |
 
-@Test
-void test2() {
-    Radio testRadio = Radio.builder()
-        .id("radio-123")
-        .name("Test Radio")
-        .build();
-}
-```
-
-### 5. Verify Interactions
-
-```java
-// GOOD: Verify mock interactions
-@Test
-void createRadio_whenValidInput_savesAndSyncs() {
-    radioService.createRadio(command);
-
-    verify(radioRepository, times(1)).save(any(Radio.class));
-    verify(radioClient, times(1)).createRadio(any(Radio.class));
-    verifyNoMoreInteractions(radioRepository, radioClient);
-}
-
-// BAD: No verification
-@Test
-void createRadio_whenValidInput_savesAndSyncs() {
-    radioService.createRadio(command);
-    // Did it actually call repository and client?
-}
-```
-
----
-
-## Common Pitfalls
-
-### 1. Not Using @ExtendWith(MockitoExtension.class)
-
-```java
-// BAD: Mocks not initialized
-class RadioServiceTest {
-    @Mock
-    private RadioRepository radioRepository;  // Will be null!
-
-    @InjectMocks
-    private RadioService radioService;  // Dependencies not injected!
-}
-
-// GOOD: Use MockitoExtension
-@ExtendWith(MockitoExtension.class)
-class RadioServiceTest {
-    @Mock
-    private RadioRepository radioRepository;
-
-    @InjectMocks
-    private RadioService radioService;
-}
-```
-
-### 2. Testing Implementation Details
-
-```java
-// BAD: Testing internal implementation
-@Test
-void createRadio_callsRepositoryFirst() {
-    InOrder inOrder = inOrder(radioRepository, radioClient);
-
-    radioService.createRadio(command);
-
-    inOrder.verify(radioRepository).save(any());
-    inOrder.verify(radioClient).createRadio(any());
-}
-
-// GOOD: Test behavior
-@Test
-void createRadio_whenValidInput_createsRadio() {
-    Radio result = radioService.createRadio(command);
-
-    assertNotNull(result);
-    assertEquals("New Radio", result.getName());
-}
-```
-
-### 3. Over-Mocking
-
-```java
-// BAD: Mocking too much
-@Test
-void test() {
-    when(radio.getId()).thenReturn("123");
-    when(radio.getName()).thenReturn("Test");
-    when(radio.getStatus()).thenReturn(RadioStatus.ACTIVE);
-    // Use real object instead!
-}
-
-// GOOD: Use real objects when possible
-@Test
-void test() {
-    Radio radio = Radio.builder()
-        .id("123")
-        .name("Test")
-        .status(RadioStatus.ACTIVE)
-        .build();
-    // Real object, no mocking needed
-}
-```
-
-### 4. Not Cleaning Up Test Data
-
-```java
-// BAD: Test data persists
-@SpringBootTest
-class IntegrationTest {
-    @Test
-    void test1() {
-        radioRepository.save(testRadio);
-        // Data remains in repository
-    }
-
-    @Test
-    void test2() {
-        // Affected by test1's data!
-    }
-}
-
-// GOOD: Clean up after each test
-@SpringBootTest
-class IntegrationTest {
-    @AfterEach
-    void tearDown() {
-        radioRepository.deleteAll();
-    }
-
-    @Test
-    void test1() {
-        radioRepository.save(testRadio);
-    }
-
-    @Test
-    void test2() {
-        // Clean slate
-    }
-}
-```
-
-### 5. Ignoring Test Failures
-
-```java
-// BAD: Ignoring test
-@Test
-@Disabled("Fails sometimes, will fix later")
-void flaky_test() {
-    // Test that sometimes fails
-}
-
-// GOOD: Fix or remove test
-@Test
-void stable_test() {
-    // Reliable test
-}
-```
-
----
-
-## Summary
-
-Testing in Spring Boot follows these key patterns:
-
-### Unit Testing:
-1. **`@ExtendWith(MockitoExtension.class)`** for Mockito support
-2. **`@Mock`** for dependencies, **`@InjectMocks`** for class under test
-3. **AAA pattern**: Arrange-Act-Assert
-4. **Verify interactions** with `verify()`
-5. **Test one thing** per test method
-
-### Integration Testing:
-6. **`@SpringBootTest`** for full application context
-7. **`@ActiveProfiles("test")`** for test configuration
-8. **Clean up test data** with `@AfterEach`
-
-### Controller Testing:
-9. **`@WebMvcTest`** for REST controller testing
-10. **`@GraphQlTest`** for GraphQL controller testing
-11. **MockMvc** for REST endpoint testing
-12. **HttpGraphQlTester** for GraphQL testing
-
-Follow these patterns for comprehensive, maintainable test coverage.
+Check JSON/regex syntax, stable skill identity, resource links/anchors, balanced fences, the entry point's 500-line limit, and description length. The prompt hook consumes `promptTriggers`; its presence does not prove `fileTriggers` are enforced. Keep maintenance evaluations here rather than duplicating them in every resource. Structural checks and manual scenario review do not substitute for fresh-session behavioral evaluations; report which were actually run.
