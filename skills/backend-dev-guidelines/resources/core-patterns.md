@@ -1,737 +1,329 @@
 # Core Patterns
 
-Fundamental patterns for Java Spring Boot backend development: dependency injection, service layer, repository pattern, and DTO pattern.
-
----
+Design services around domain invariants, explicit state ownership, and honest completion semantics. CRUD is one use case shape, not the architecture of every backend.
 
 ## Table of Contents
 
-1. [Dependency Injection](#dependency-injection)
-2. [Service Layer Pattern](#service-layer-pattern)
-3. [Repository Pattern](#repository-pattern)
-4. [DTO Pattern](#dto-pattern)
-5. [Best Practices](#best-practices)
-6. [Common Pitfalls](#common-pitfalls)
+- [Constructor injection](#constructor-injection)
+- [Application services and domain intent](#application-services-and-domain-intent)
+- [State ownership and repository contracts](#state-ownership-and-repository-contracts)
+- [Concurrency and atomic invariants](#concurrency-and-atomic-invariants)
+- [Submission, acknowledgment, and confirmation](#submission-acknowledgment-and-confirmation)
+- [Async operation pattern](#async-operation-pattern)
+- [Deadlines, cancellation, and retries](#deadlines-cancellation-and-retries)
+- [Transactions and external side effects](#transactions-and-external-side-effects)
+- [Conditional JDBC and JPA guidance](#conditional-jdbc-and-jpa-guidance)
+- [Lifecycle, errors, and observability](#lifecycle-errors-and-observability)
+- [Verification checklist](#verification-checklist)
 
----
+## Constructor injection
 
-## Dependency Injection
+Use constructor injection for required collaborators. A single Spring constructor does not need `@Autowired`. Final dependency references make wiring stable; they do not make the collaborators or service state immutable or thread-safe.
 
-### Constructor Injection with Lombok
+Use a manual constructor when parameters need `@Qualifier`, configuration extraction, or validation. Do not assume Lombok copies field annotations to generated parameters. Inject typed configuration rather than using `@AllArgsConstructor` to include configuration scalars, mutable flags, or runtime registries as bean dependencies. See [lombok-guide.md](lombok-guide.md) and [configuration.md](configuration.md).
 
-**Always prefer constructor injection** over field injection for better testability and immutability.
+Avoid circular dependencies, field injection, service locators, and dependencies created inside use-case methods. Prefer existing infrastructure beans, with an explicit owner for resources that must close.
 
-```java
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
+## Application services and domain intent
 
-@Service
-@RequiredArgsConstructor  // Generates constructor for final fields
-@Slf4j
-public class LinkService {
-    private final RadioService radioService;
-    private final RadioClient radioClient;
-    private final LinkRepository linkRepository;
+A service represents a use case: validate business preconditions, authorize access to the target, coordinate owners/adapters, and return a truthful result. Controllers handle transport concerns, not concurrency policy or remote command workflows.
 
-    public Link getLink(String radioId, String linkId) {
-        log.info("Fetching link: {} from radio: {}", linkId, radioId);
-        Radio radio = radioService.getRadio(radioId);
-        return radio.getLinkById(linkId);
-    }
-}
+- Validate syntax and shape at trust boundaries; enforce business invariants at the state-changing boundary, including non-HTTP callers.
+- Enforce uniqueness where the write is atomic. An `existsByName` check can improve diagnostics but cannot replace a database constraint or a synchronized in-memory update.
+- Name methods and predicates after domain meaning: `confirmTargetMode`, `hasReachedTargetMode`, `isObservationFresh`. Do not hide a transition behind `update`, or put meaningful predicates into opaque inline lambdas.
+- Separate high-level orchestration from wire parsing, mapping, and low-level condition evaluation.
+- Return a domain result, snapshot, or operation receipt. Keep HTTP status and GraphQL error extensions in transport adapters.
+- Reuse a safe representation when contracts really are identical; do not add mandatory DTO/command/domain copies as ceremony.
+
+Use records for snapshots and value types. Use controlled methods on mutable owners instead of public setters that can bypass invariants. [dto-and-mapping.md](dto-and-mapping.md) covers representation choices and defensive copying.
+
+## State ownership and repository contracts
+
+Define the repository's authority, lifetime, consistency, and failure behavior before its CRUD methods. Live in-memory observations and file-backed configuration are valid state boundaries; neither establishes a database-first architecture.
+
+| Owner | Contract questions |
+|---|---|
+| Durable store | Which write is committed atomically? What survives restart? How are versions and migrations handled? |
+| Live observed store | Who produced the value? How old is it? What happens on disconnect or reordering? |
+| Session store | Which authenticated identity owns it? When does it expire? Is it process-local? |
+| Cache | What is the source of truth? What invalidates it? Is stale data acceptable for this operation? |
+| Operation registry | Which operations conflict? Who releases reservations, and only after what event? |
+
+Use `Optional<T>` for a legitimately absent single lookup. Return empty collections rather than null unless a documented external contract requires otherwise. Repository results can be domain objects or purpose-built projections; they need not always be full entities, but should not leak a persistence framework's managed state across an unintended boundary.
+
+Do not expose a mutable map's live `values()` view. `List.copyOf(values)` prevents collection mutation through that result, but does not deep-copy elements or create a coherent multi-object snapshot during concurrent writes. Replace immutable snapshots atomically or capture them under the owning synchronization when consistency requires it.
+
+Distinguish a missing observation from a known inactive state. Treating unknown as inactive can permit an unsafe command. Cache eviction, session expiry, and remote disconnect have different meanings and should not share an accidental generic delete policy. See [validation-and-caching.md](validation-and-caching.md).
+
+## Concurrency and atomic invariants
+
+`ConcurrentHashMap` makes individual operations safe; it does not atomize check-then-act sequences, multiple keys, nested mutable values, or conflict checks across operation types.
+
+Choose the mechanism that covers the complete invariant:
+
+- `putIfAbsent` or `compute` for a single-key atomic transition; keep callbacks short and free of blocking external I/O.
+- One owner lock or serialized execution for related keys or a conflict matrix. All readers/writers participating in the invariant must use that boundary.
+- Database constraints, locking, or version checks for durable concurrent updates. Process locks do not coordinate multiple application instances.
+- Identity-checked cleanup such as `remove(key, expectedOperation)` so an old completion cannot remove a newer registration. Use an identity token if value equality could equate distinct runs.
+
+Do not execute user callbacks, complete futures, or call remote systems while holding an owner lock if they can block or reenter the service. Reserve/update state inside the critical section; perform I/O outside it; reconcile the result safely afterward.
+
+A conflict relation needs domain review. If operation A excludes B but B does not exclude A, verify that asymmetry is intended; otherwise admission order changes correctness. Test conflicting submissions simultaneously, not just sequentially.
+
+## Submission, acknowledgment, and confirmation
+
+For asynchronous commands, document at least three stages:
+
+| Stage | What it proves | What it does not prove |
+|---|---|---|
+| Submitted | Local execution/transport accepted work | Remote acceptance or completion |
+| ACK | Remote protocol accepted the command, according to its contract | Requested state is now observed |
+| Confirmed | A correlated, sufficiently fresh observation satisfies the domain condition | Every unrelated downstream effect is complete |
+
+Some protocols have only a final response; others require a separate observation stream. Do not invent extra stages, but do not label an ACK as completion when the protocol does not guarantee it.
+
+For a confirmed operation:
+
+1. Validate and atomically reserve the conflict scope.
+2. Establish the freshness/correlation baseline and observation strategy.
+3. Submit the bounded command and handle ACK/rejection.
+4. Await a valid confirmation under the overall deadline.
+5. Release subscriptions and execution resources; release conflict ownership when execution can no longer violate it.
+
+**Freshness is part of correctness.** A replay-latest snapshot is useful for subscribers rendering current state, but an old matching snapshot must not automatically confirm a new command. Prefer protocol correlation IDs, monotonic revisions, or a request-scoped generation. Timestamps alone require assumptions about clocks, ordering, and precision.
+
+**Subscription order is protocol-dependent.** Subscribing only after ACK can miss a non-replayed confirmation emitted before subscription. Subscribing before send avoids that gap only if observations are buffered/correlated and stale values rejected. Recurring state observations and one-shot events need different guarantees; define and test the policy.
+
+Handle stream completion without a matching value as failure or an explicit domain outcome, never implicit success. Specify sink emission failure, backpressure, bounded buffering, disconnect/reconnect, and out-of-order observations. A dropped confirmation event is not equivalent to a dropped UI refresh. See [graphql-patterns.md](graphql-patterns.md) for subscription boundaries.
+
+## Async operation pattern
+
+Use this **feature service + shared coordinator + independently observed state** recipe when the application already has command coordination. `OperationService`, `OperationType`, and `OperationResponseHandler` below are **application APIs**, not Spring classes. Adapt to the existing coordinator; do not build a workflow engine or add `@Async` just to reproduce the example.
+
+### Responsibilities and sequence
+
+```text
+GraphQL mutation
+  → feature service chooses operation identity, command, and business completion condition
+  → shared coordinator registers conflict scope atomically
+  → virtual-thread worker invokes a lazy Supplier<CompletableFuture<ACK>>
+  → submission succeeds (retry only if safe) and ACK is received
+  → response handler OR confirmation observation establishes the result
+  → coordinator cleans up, releases ownership when safe, completes caller future
+  → controller maps the result with thenApply
+
+Separate ingestion path:
+scheduled read / incoming device event → validate observation → repository.save
+                                                    ├─ latest state for queries/UI
+                                                    └─ fresh observations for confirmation
 ```
 
-### When to Use @AllArgsConstructor
+| Responsibility | Owner |
+|---|---|
+| Authorization, device/resource preconditions, operation identity, target-state predicate | Feature/application boundary |
+| Atomic admission, execution resource, submission retry, one deadline, interruption and cleanup | Shared operation coordinator |
+| Request/response encoding and bounded transport I/O | Existing client/transport adapter |
+| Validated observed state and its publication contract | Repository/observation owner |
+| GraphQL/REST projection and safe public error translation | Controller/mapper/resolver |
 
-Use `@AllArgsConstructor` when you have both final and non-final fields:
+Keep the command supplier lazy: passing `() -> client.send(...)` lets admission happen before sending and creates a new attempt on retry. Calling `client.send(...)` first and passing its already-started future can perform a forbidden/conflicting side effect before the coordinator accepts it.
+
+### Choose the coordinator path
+
+Example coordinator contract (application imports omitted):
 
 ```java
-@Service
-@AllArgsConstructor
-@Slf4j
-public class CachingService {
-    private final DataRepository repository;
-    private CacheManager cacheManager;  // Non-final, can be updated
+<S, R> CompletableFuture<R> execute(
+        String deviceId,
+        OperationType operation,
+        Supplier<CompletableFuture<S>> sendRequest,
+        OperationResponseHandler<S, R> handleResponse);
 
-    public void updateCacheManager(CacheManager newManager) {
-        this.cacheManager = newManager;
-    }
-}
+<R> CompletableFuture<R> executeConfirmed(
+        String deviceId,
+        OperationType operation,
+        Supplier<CompletableFuture<?>> sendRequest,
+        Mono<R> confirmation);
 ```
 
-### Manual Constructor (Edge Cases)
+- Use **`execute`** when a final response or a bounded follow-up establishes the result. The application handler is `R handle(S response) throws Exception`; it runs after successful submission, once, and must honor interruption and bounded I/O. Handler failure must not resend a successfully submitted command.
+- Use **`executeConfirmed`** when a separate observation is required. Return the matching observed value, not a reconstruction from requested fields. Use the coordinator's overall budget rather than adding unrelated timers at every layer.
+- In a backend without this abstraction, design the required guarantees with its existing futures/reactive/lifecycle facilities. The pattern is the responsibility split, not compulsory API names or a reusable workflow engine.
 
-Only write manual constructors for complex initialization logic:
+### Feature-local operation type
 
-```java
-@Service
-@Slf4j
-public class ComplexService {
-    private final Repository repository;
-    private final Client client;
-    private final ExecutorService executor;
-
-    public ComplexService(Repository repository, Client client) {
-        this.repository = repository;
-        this.client = client;
-        // Custom initialization
-        this.executor = Executors.newVirtualThreadPerTaskExecutor();
-        log.info("Initialized ComplexService with virtual threads");
-    }
-}
-```
-
----
-
-## Service Layer Pattern
-
-### Purpose
-
-Services coordinate business logic between controllers, repositories, and external clients. They:
-- Contain business logic and orchestration
-- Coordinate between multiple repositories
-- Handle domain-specific operations
-- Throw domain-specific exceptions
-- Log important operations
-
-### Basic Service Structure
+Place this in `feature/power/operation/PowerOperation.java`, using the actual shared `OperationType` import:
 
 ```java
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-import java.util.NoSuchElementException;
-
-@Service
-@RequiredArgsConstructor
-@Slf4j
-public class RadioService {
-    private final RadioRepository radioRepository;
-    private final RadioClient radioClient;
-
-    public Radio getRadio(String radioId) {
-        log.info("Fetching radio: {}", radioId);
-        return radioRepository.findById(radioId)
-            .orElseThrow(() -> new NoSuchElementException("Radio not found: " + radioId));
-    }
-
-    public Radio createRadio(CreateRadioCommand command) {
-        log.info("Creating radio with name: {}", command.getName());
-
-        // Validate business rules
-        validateRadioName(command.getName());
-
-        // Build domain model
-        Radio radio = Radio.builder()
-            .name(command.getName())
-            .type(command.getType())
-            .status(RadioStatus.INACTIVE)
-            .build();
-
-        // Save to repository
-        Radio saved = radioRepository.save(radio);
-
-        // Sync with external system
-        radioClient.createRadio(saved);
-
-        log.info("Created radio: {}", saved.getId());
-        return saved;
-    }
-
-    private void validateRadioName(String name) {
-        if (radioRepository.existsByName(name)) {
-            throw new IllegalArgumentException("Radio name already exists: " + name);
-        }
-    }
-}
-```
-
-### Service Coordination Pattern
-
-Services can coordinate between multiple repositories and services:
-
-```java
-@Service
-@RequiredArgsConstructor
-@Slf4j
-public class LinkService {
-    private final RadioService radioService;
-    private final LinkRepository linkRepository;
-    private final RadioClient radioClient;
-
-    public Link getLink(String radioId, String linkId) {
-        log.info("Fetching link: {} from radio: {}", linkId, radioId);
-
-        // Use other service to get radio
-        Radio radio = radioService.getRadio(radioId);
-
-        // Get link from radio
-        Link link = radio.getLinkById(linkId);
-
-        return link;
-    }
-
-    public Link updateLink(String radioId, String linkId, UpdateLinkCommand command) {
-        log.info("Updating link: {} in radio: {}", linkId, radioId);
-
-        // Coordinate between multiple data sources
-        Radio radio = radioService.getRadio(radioId);
-        Link link = radio.getLinkById(linkId);
-
-        // Apply updates
-        link.setName(command.getName());
-        link.setStatus(command.getStatus());
-
-        // Save to repository
-        linkRepository.save(link);
-
-        // Sync with external system
-        radioClient.updateLink(radioId, link);
-
-        log.info("Updated link: {}", linkId);
-        return link;
-    }
-}
-```
-
-### Transaction Management
-
-Use `@Transactional` for database operations that require atomicity:
-
-```java
-import org.springframework.transaction.annotation.Transactional;
-
-@Service
-@RequiredArgsConstructor
-@Slf4j
-public class OrderService {
-    private final OrderRepository orderRepository;
-    private final PaymentService paymentService;
-
-    @Transactional
-    public Order createOrder(CreateOrderCommand command) {
-        log.info("Creating order for user: {}", command.getUserId());
-
-        // Create order
-        Order order = orderRepository.save(Order.from(command));
-
-        // Process payment (if this fails, order creation rolls back)
-        paymentService.processPayment(order.getId(), command.getPaymentDetails());
-
-        return order;
-    }
-
-    @Transactional(readOnly = true)
-    public Order getOrder(String orderId) {
-        return orderRepository.findById(orderId)
-            .orElseThrow(() -> new NoSuchElementException("Order not found"));
-    }
-}
-```
-
----
-
-## Repository Pattern
-
-### Purpose
-
-Repositories abstract data access and provide a clean API for CRUD operations. They:
-- Encapsulate data access logic
-- Return domain models (not DTOs)
-- Return `Optional<T>` for nullable results
-- Return defensive copies for collections
-- Use thread-safe collections for in-memory storage
-
-### In-Memory Repository
-
-```java
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Repository;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-
-@Repository
-@Slf4j
-public class RadioRepository {
-    private final Map<String, Radio> radios = new ConcurrentHashMap<>();
-
-    public Optional<Radio> findById(String id) {
-        log.debug("Finding radio by id: {}", id);
-        return Optional.ofNullable(radios.get(id));
-    }
-
-    public List<Radio> findAll() {
-        log.debug("Finding all radios");
-        // Return defensive copy
-        return new ArrayList<>(radios.values());
-    }
-
-    public Radio save(Radio radio) {
-        if (radio.getId() == null) {
-            radio.setId(UUID.randomUUID().toString());
-        }
-        log.debug("Saving radio: {}", radio.getId());
-        radios.put(radio.getId(), radio);
-        return radio;
-    }
-
-    public void deleteById(String id) {
-        log.debug("Deleting radio: {}", id);
-        radios.remove(id);
-    }
-
-    public boolean existsByName(String name) {
-        return radios.values().stream()
-            .anyMatch(radio -> radio.getName().equals(name));
-    }
-}
-```
-
-### Spring Data JPA Repository
-
-For database-backed repositories, use Spring Data JPA:
-
-```java
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.stereotype.Repository;
-import java.util.List;
-import java.util.Optional;
-
-@Repository
-public interface RadioRepository extends JpaRepository<Radio, String> {
-
-    Optional<Radio> findByName(String name);
-
-    List<Radio> findByStatus(RadioStatus status);
-
-    boolean existsByName(String name);
-
-    @Query("SELECT r FROM Radio r WHERE r.type = :type AND r.status = :status")
-    List<Radio> findByTypeAndStatus(RadioType type, RadioStatus status);
-}
-```
-
-### Custom Repository Methods
-
-Add custom methods to Spring Data repositories:
-
-```java
-@Repository
-public interface RadioRepository extends JpaRepository<Radio, String>, RadioRepositoryCustom {
-    // Standard methods...
-}
-
-public interface RadioRepositoryCustom {
-    List<Radio> findRadiosWithComplexCriteria(RadioSearchCriteria criteria);
-}
-
-@RequiredArgsConstructor
-public class RadioRepositoryCustomImpl implements RadioRepositoryCustom {
-    private final EntityManager entityManager;
+public enum PowerOperation implements OperationType {
+    SET_TRANSMISSION_POWER;
 
     @Override
-    public List<Radio> findRadiosWithComplexCriteria(RadioSearchCriteria criteria) {
-        CriteriaBuilder cb = entityManager.getCriteriaBuilder();
-        CriteriaQuery<Radio> query = cb.createQuery(Radio.class);
-        Root<Radio> root = query.from(Radio.class);
-
-        List<Predicate> predicates = new ArrayList<>();
-
-        if (criteria.getName() != null) {
-            predicates.add(cb.like(root.get("name"), "%" + criteria.getName() + "%"));
-        }
-
-        if (criteria.getStatus() != null) {
-            predicates.add(cb.equal(root.get("status"), criteria.getStatus()));
-        }
-
-        query.where(predicates.toArray(new Predicate[0]));
-
-        return entityManager.createQuery(query).getResultList();
+    public boolean blocksOtherOperations() {
+        return false;
     }
 }
 ```
 
----
+This example assumes duplicate operations on the same device conflict even when the flag is false. Inspect actual admission logic: a check of only `running.blocksOtherOperations()` is directional, so a newly arriving exclusive operation could still start beside earlier work. Test both admission orders and the resource scope; the flag alone does not establish mutual exclusion.
 
-## DTO Pattern
+### Feature service: submit, then confirm observed state
 
-### Purpose
-
-DTOs (Data Transfer Objects) separate external representations from domain models:
-- **GraphQL DTOs** (`*Gql`): For GraphQL API
-- **REST DTOs** (`*Dto`): For REST API
-- **Domain Models**: Internal business logic
-- **External DTOs**: For third-party APIs
-
-### DTO Layers
-
-```
-Client Request → GraphQL DTO → Domain Model → Repository
-                    ↓
-                 Mapper
-                    ↓
-              Domain Model
-```
-
-### GraphQL DTO Example
-
-Use records for immutable DTOs:
+The fragment assumes application types `DeviceClient`, `SystemParametersRepository`, `SystemParameters`, and `ETransmissionPower`, plus the enum above. Adapt their names and signatures to the actual feature. `CompletableFuture` is from `java.util.concurrent`, `Predicate` from `java.util.function`, `Mono` from `reactor.core.publisher`, and constraints from `jakarta.validation.constraints`.
 
 ```java
-package com.company.project.dto.gql;
-
-public record LinkGql(
-    String id,
-    String name,
-    LinkStatusGql status,
-    String description
-) {}
-
-public enum LinkStatusGql {
-    ACTIVE,
-    INACTIVE,
-    PENDING
-}
-```
-
-### REST DTO Example
-
-```java
-package com.company.project.dto.json;
-
-import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.Data;
-
-@Data
-public class LinkDto {
-    private String id;
-    private String name;
-
-    @JsonProperty("link_status")
-    private String status;
-
-    private String description;
-}
-```
-
-### Domain Model Example
-
-Use Lombok's `@Data` and `@Builder` for domain models:
-
-```java
-package com.company.project.models;
-
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class Link {
-    private String id;
-    private String name;
-    private LinkStatus status;
-    private String description;
-    private String radioId;
-}
-
-public enum LinkStatus {
-    ACTIVE,
-    INACTIVE,
-    PENDING
-}
-```
-
-### Input Types for Mutations
-
-```java
-package com.company.project.dto.gql;
-
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
-
-public record UpdateLinkInput(
-    @NotBlank(message = "Link ID is required")
-    String linkId,
-
-    @NotBlank(message = "Radio ID is required")
-    String radioId,
-
-    @Size(min = 3, max = 100, message = "Name must be between 3 and 100 characters")
-    String name,
-
-    LinkStatusGql status
-) {}
-```
-
----
-
-## Best Practices
-
-### 1. Single Responsibility
-
-Each service should have a single, well-defined responsibility:
-
-```java
-// GOOD: LinkService focuses only on link operations
 @Service
+@Validated
 @RequiredArgsConstructor
-public class LinkService {
-    private final RadioService radioService;
-    private final LinkRepository linkRepository;
+public class PowerService {
+    private final DeviceClient deviceClient;
+    private final SystemParametersRepository repository;
+    private final OperationService operations;
 
-    public Link getLink(String radioId, String linkId) {
-        Radio radio = radioService.getRadio(radioId);
-        return radio.getLinkById(linkId);
+    public CompletableFuture<SystemParameters> setTransmissionPower(
+            @NotBlank String deviceId, @NotNull ETransmissionPower target) {
+        return operations.executeConfirmed(
+                deviceId,
+                PowerOperation.SET_TRANSMISSION_POWER,
+                () -> deviceClient.setTransmissionPower(deviceId, target),
+                awaitTransmissionPower(deviceId, target));
     }
-}
 
-// BAD: Service doing too much
-@Service
-public class LinkService {
-    // Managing links, radios, users, and sending emails!
-    public Link getLink(String radioId, String linkId) { }
-    public void sendLinkEmail(String linkId) { }
-    public Radio getRadio(String radioId) { }
-    public User getUser(String userId) { }
+    public CompletableFuture<SystemParameters> refreshFromDevice(@NotBlank String deviceId) {
+        return deviceClient.readSystemParameters(deviceId)
+                .thenApply(observed -> repository.save(deviceId, observed));
+    }
+
+    private Mono<SystemParameters> awaitTransmissionPower(
+            String deviceId, ETransmissionPower target) {
+        return Mono.defer(() -> repository.observations(deviceId)
+                .filter(hasTransmissionPower(target))
+                .next());
+    }
+
+    private static Predicate<SystemParameters> hasTransmissionPower(ETransmissionPower target) {
+        return observed -> observed.transmissionPower() == target;
+    }
 }
 ```
 
-### 2. Defensive Copying
+Spring stereotypes/validation imports are `org.springframework.stereotype.Service` and `org.springframework.validation.annotation.Validated`; the constructor annotation is `lombok.RequiredArgsConstructor`. The domain predicate is named; the orchestration reads as a use case rather than a state comparison. Service validation needs the normal validation-enabled proxy. Authorization and connected-device/resource ownership must be established by the host application's shared entry policy **before admission**, not assumed from the string ID or these validation annotations.
 
-Always return defensive copies of mutable collections:
+**Required source contract for this fragment:** `observations(deviceId)` publishes fresh observations, including unchanged values, without cached replay; the coordinator subscribes after ACK. This requires recurring reads/events after ACK and rejection of stale/out-of-order reads at ingestion. `Mono.defer` makes registration lazy but does **not** prevent missing a one-shot confirmation before subscription. For one-shot sources, establish a correlated listener before sending through the coordinator's lifecycle. Without command IDs/revisions, matching observations establish eventual state, not proof that this command caused it. If causality is part of the API promise, this fragment is insufficient.
+
+### Controller: return and project the future
+
+Fragment inside a feature `@Controller`; `powerService` and `mapper` are injected collaborators, `PowerGql` is the application's output, and the authority is illustrative. Reuse the actual schema, DTO mapping, and permission policy:
 
 ```java
-@Repository
-public class RadioRepository {
-    private final Map<String, Radio> radios = new ConcurrentHashMap<>();
-
-    // GOOD: Returns defensive copy
-    public List<Radio> findAll() {
-        return new ArrayList<>(radios.values());
-    }
-
-    // BAD: Exposes internal collection
-    public Collection<Radio> findAll() {
-        return radios.values();  // Caller can modify internal state!
-    }
+@MutationMapping("setTransmissionPower")
+@PreAuthorize("hasAuthority('power:write')")
+public CompletableFuture<PowerGql> setTransmissionPower(
+        @Argument("deviceId") @NotBlank String deviceId,
+        @Argument("power") @NotNull ETransmissionPower power) {
+    return powerService.setTransmissionPower(deviceId, power)
+            .thenApply(mapper::toGql);
 }
 ```
 
-### 3. Validation in Services
+The SDL enum and output must match these Java contracts. Existing resource authorization still applies; a standard authority check is not device ownership. Do not call `.join()`, `.get()`, `.block()`, or `.subscribe()` here. If the established public contract safely shares the domain snapshot, a duplicate output/mapper is not required.
 
-Validate business rules in services, not repositories:
+### Connect ingestion and subscriptions
+
+`refreshFromDevice` belongs on the **independent observation path**. Wire it into the existing connected-device poller, event handler, or streaming client; a mutation that waits for observations with no producer can only time out. Handle background failures at the owned scheduling/transport boundary; do not detach an unobserved future or hide a command failure as `null` success.
+
+Saving an observed value feeds confirmation; an optional public subscription can project the same state under its own replay contract. Keep cached UI replay separate from fresh evidence, and deduplicate replaceable UI updates after the confirmation path when repeated identical observations are required. Define producer serialization and publication failure behavior.
+
+The coordinator must already own its virtual-thread executor and shutdown. A feature uses that coordinator rather than its own pool, extra `@Async`, common-pool `supplyAsync`, private retry loop, or local conflict registry. Its submission supplier must return a fresh bounded future for every attempt. Polling cadence is not single-flight protection: async dispatch can overlap even with `fixedDelay`.
+
+### Verify the async pattern
+
+Use controlled futures and an observation sink:
+
+1. Before admission, assert no client command starts. On conflicting/denied/invalid input, assert no send occurs.
+2. Start a command and keep its ACK future incomplete; the feature's result must remain incomplete.
+3. Complete ACK, then publish a fresh non-target observation; the result must still be incomplete.
+4. Publish the target observation after confirmation registration; assert the returned value is **that observation**, and listener counts return to baseline.
+5. Provide an old matching snapshot and a delayed pre-command read; neither may confirm the request. For one-shot sources, force confirmation in the send/ACK window and prove it is not missed.
+
+A mocked coordinator proves feature wiring, not execution guarantees. Test deadlines, conflicts, safe retries, cancellation, rejection, and shutdown against the real coordinator using the [async test matrix](testing.md#deadlines-acks-retries-and-cancellation).
+
+## Deadlines, cancellation, and retries
+
+A timeout ends a wait; it does not prove that the worker, remote command, or side effect stopped. Java interruption is cooperative. `CompletableFuture.orTimeout` completes that future exceptionally but does not stop its underlying task; applying it to a shared future also changes what other waiters observe.
+
+- Bound each transport attempt and the whole operation, including retries, backoff, ACK, and confirmation.
+- Separate caller-facing completion from internal execution ownership. A detached future view such as `copy()` can isolate caller cancellation, but is not a complete cancellation policy.
+- Decide whether caller disconnect/cancellation only detaches a waiter or actively aborts an operation. Authorization-sensitive remote work must not outlive its allowed session accidentally.
+- Retain conflict reservations while timed-out code can still run or send effects. If termination cannot be established, use an explicit quarantined/unknown state and reconciliation policy rather than falsely reporting the target free.
+- Cancel observation waits and scheduled timers on every terminal path. Restore interrupted status when translating `InterruptedException`.
+
+Retry only failures that the protocol and operation make safe. An ACK timeout can mean the command executed and the reply was lost. Blindly retrying a non-idempotent action may execute it twice.
+
+Prefer an idempotency/correlation key and remote deduplication when available. Otherwise reconcile observed state, use a demonstrably idempotent operation, or fail with an uncertain outcome. Bound attempts and backoff; stop on rejection, authentication failure, cancellation, or exhausted deadline. Each retry must create a new bounded attempt, not wait again on the same failed future. Retry submission separately from confirmation unless the domain explicitly permits resending.
+
+## Transactions and external side effects
+
+Use Spring `@Transactional` only for operations participating in the configured transaction manager. A local database rollback does **not** unsend a network command, reverse a payment, restore an arbitrary file, or roll back a concurrent map.
+
+- Keep database transactions short; avoid waiting for remote confirmation while holding database locks/connections.
+- Understand proxy boundaries: ordinary self-invocation bypasses proxy-based transaction advice.
+- Default rollback rules generally cover unchecked exceptions/errors, not every checked exception. Declare the required policy and test it.
+- `readOnly = true` is an optimization hint, not authorization or guaranteed write prevention.
+- A local transaction does not automatically cross executor threads, future callbacks, or arbitrary reactive boundaries. Use the transaction model matching the actual data-access stack.
+
+When a durable write and external delivery must survive crashes, consider a transactional outbox with idempotent consumers. For a simpler workflow, explicitly persist pending/failed state and reconcile, or define compensation. An after-commit callback avoids sending before commit but is not itself durable delivery. Choose the failure model first; do not add distributed-workflow machinery without a real requirement.
+
+## Conditional JDBC and JPA guidance
+
+The following applies **only when the target project actually uses that persistence approach**. A driver or starter declaration is not evidence of implemented storage or durability.
+
+### JDBC
+
+Use the established `JdbcTemplate`, `NamedParameterJdbcTemplate`, or supported `JdbcClient` style. `JdbcClient` requires Spring Framework 6.1+ (Boot 3.2+ or compatible Boot 4); do not introduce it into an older baseline without checking.
+
+Fragment inside a JDBC repository; `jdbc` is an injected `JdbcTemplate`:
 
 ```java
-@Service
-@RequiredArgsConstructor
-public class RadioService {
-    private final RadioRepository radioRepository;
-
-    public Radio createRadio(CreateRadioCommand command) {
-        // Validate business rules
-        if (radioRepository.existsByName(command.getName())) {
-            throw new IllegalArgumentException("Radio name already exists");
-        }
-
-        if (command.getName().length() < 3) {
-            throw new IllegalArgumentException("Radio name too short");
-        }
-
-        return radioRepository.save(Radio.from(command));
-    }
+public java.util.Optional<String> findName(String deviceId) {
+    return jdbc.queryForList(
+            "select name from device where id = ?", String.class, deviceId)
+            .stream().findFirst();
 }
 ```
 
-### 4. Meaningful Exception Messages
+The example assumes `id` is unique. Bind all values; never concatenate untrusted SQL. Parameters cannot bind identifiers or sort directions—select those from a fixed allowlist. Specify row mapping, null handling, affected-row expectations, pagination, and exception translation. Use constraints to enforce integrity under concurrent writes.
 
-Provide context in exception messages:
+### JPA
 
-```java
-// GOOD: Detailed message
-public Radio getRadio(String radioId) {
-    return radioRepository.findById(radioId)
-        .orElseThrow(() -> new NoSuchElementException(
-            "Radio not found with ID: " + radioId
-        ));
-}
+Use Spring Data JPA only with the relevant dependencies, configured entity scanning, transaction manager, and a real entity model. Records suit projections/DTOs, not ordinary JPA entities. Use `jakarta.persistence` for Boot 3/4, the required accessible no-argument constructor, and deliberate entity identity semantics.
 
-// BAD: Generic message
-public Radio getRadio(String radioId) {
-    return radioRepository.findById(radioId)
-        .orElseThrow(() -> new NoSuchElementException("Not found"));
-}
-```
+Keep lazy relationships inside a deliberate fetch/transaction boundary. Use projections or bounded fetch plans to avoid N+1 queries and unbounded graphs. Consider optimistic locking for conflicting updates. Custom repository fragments or specifications are appropriate for real query complexity; do not generate a generic criteria framework preemptively. See [lombok-guide.md](lombok-guide.md) for entity equality/proxy hazards.
 
-### 5. Logging Strategy
+### Schema and SQLite
 
-Log at appropriate levels:
+Use the project's supported migration tool and test migrations against the actual engine/version. Do not assume JPA schema auto-update is a production migration strategy or that every migration tool supports SQLite in the same edition/version.
 
-```java
-@Service
-@Slf4j
-public class LinkService {
+SQLite needs an explicit writable file location, backup/recovery policy, connection-level foreign-key verification, busy/locking policy, and realistic concurrent-write tests. Its write concurrency and DDL support differ from server databases; connection pooling or WAL mode does not turn it into a multi-writer server. Test filesystem permissions, transaction behavior, upgrades, and crash recovery for the deployment. Never silently replace durable requirements with an in-memory database.
 
-    public Link getLink(String radioId, String linkId) {
-        log.info("Fetching link: {} from radio: {}", linkId, radioId);  // Info for important operations
+## Lifecycle, errors, and observability
 
-        Link link = repository.findById(linkId)
-            .orElseThrow(() -> {
-                log.error("Link not found: {} in radio: {}", linkId, radioId);  // Error for failures
-                return new NoSuchElementException("Link not found");
-            });
+Every executor, scheduler, socket, subscription, and listener needs an owner and a terminal path. Stop accepting work before shutdown, release partial-startup resources in reverse acquisition order, make cleanup repeatable, and bound draining. A Spring lifecycle callback does not force uncooperative remote work to terminate.
 
-        log.debug("Retrieved link details: {}", link);  // Debug for details
-        return link;
-    }
-}
-```
+Preserve the original failure when cleanup also fails; continue releasing independent resources and report secondary failures appropriately. Do not catch broad exceptions merely to log and return null. Catch at the boundary that can translate, retry safely, compensate, or release owned resources.
 
----
+Log useful transitions and safe correlation identifiers: admitted, rejected, ACK, confirmed, timed out, reconciled. Routine lookups and expected not-found results rarely justify error logs. Avoid logging full DTOs, snapshots, configuration, tokens, or credential objects. Record an exception once at the responsible boundary rather than at every layer. See [exception-handling.md](exception-handling.md).
 
-## Common Pitfalls
+## Verification checklist
 
-### 1. Field Injection
+- Constructor wiring includes qualifiers and excludes runtime/configuration state.
+- Business invariants hold for concurrent callers and bypassing transport adapters.
+- Repository results cannot mutate owned state; restart/multi-instance limitations are explicit.
+- Tests distinguish submission, rejection, ACK, fresh confirmation, stale replay, and empty/disconnected streams.
+- Timeout/cancellation tests show whether execution stopped and when the conflict slot is released.
+- Retry tests cover lost ACKs, duplicate effects, terminal failures, and overall deadlines.
+- Partial startup, executor rejection, shutdown, and cleanup failures release all owned resources.
+- Transaction tests cover actual rollback rules and make external-side-effect limits visible.
+- SQL/migration/entity tests run against the intended database when persistence is implemented.
 
-```java
-// BAD: Field injection
-@Service
-public class LinkService {
-    @Autowired
-    private RadioService radioService;  // Hard to test, not immutable
-}
-
-// GOOD: Constructor injection
-@Service
-@RequiredArgsConstructor
-public class LinkService {
-    private final RadioService radioService;  // Easy to test, immutable
-}
-```
-
-### 2. Logic in Controllers
-
-```java
-// BAD: Business logic in controller
-@Controller
-public class LinkController {
-    @QueryMapping
-    public LinkGql link(@Argument String radioId, @Argument String linkId) {
-        Radio radio = radioRepository.findById(radioId).orElseThrow();
-        Link link = radio.getLinkById(linkId);
-        // Validation, mapping, business logic in controller!
-        if (link.getName().isEmpty()) throw new IllegalArgumentException();
-        return new LinkGql(link.getId(), link.getName());
-    }
-}
-
-// GOOD: Delegate to service
-@Controller
-@RequiredArgsConstructor
-public class LinkController {
-    private final LinkService service;
-    private final LinkMapper mapper;
-
-    @QueryMapping
-    public LinkGql link(@Argument String radioId, @Argument String linkId) {
-        Link link = service.getLink(radioId, linkId);
-        return mapper.toGql(link);
-    }
-}
-```
-
-### 3. Returning Mutable Internal State
-
-```java
-// BAD: Exposing internal state
-@Data
-public class Radio {
-    private List<Link> links = new ArrayList<>();
-
-    public List<Link> getLinks() {
-        return links;  // Callers can modify internal list!
-    }
-}
-
-// GOOD: Defensive copy
-@Data
-public class Radio {
-    private List<Link> links = new ArrayList<>();
-
-    public List<Link> getLinks() {
-        return new ArrayList<>(links);  // Safe copy
-    }
-}
-```
-
-### 4. Missing Validation
-
-```java
-// BAD: No validation
-@Service
-public class RadioService {
-    public Radio createRadio(CreateRadioCommand command) {
-        return repository.save(Radio.from(command));  // What if name is null?
-    }
-}
-
-// GOOD: Validate inputs
-@Service
-public class RadioService {
-    public Radio createRadio(CreateRadioCommand command) {
-        if (command.getName() == null || command.getName().isBlank()) {
-            throw new IllegalArgumentException("Radio name is required");
-        }
-        return repository.save(Radio.from(command));
-    }
-}
-```
-
-### 5. Catching Generic Exceptions
-
-```java
-// BAD: Catching generic Exception
-@Service
-public class LinkService {
-    public Link getLink(String linkId) {
-        try {
-            return repository.findById(linkId).orElseThrow();
-        } catch (Exception e) {  // Too broad!
-            log.error("Error", e);
-            return null;
-        }
-    }
-}
-
-// GOOD: Catch specific exceptions
-@Service
-public class LinkService {
-    public Link getLink(String linkId) {
-        try {
-            return repository.findById(linkId).orElseThrow();
-        } catch (NoSuchElementException e) {
-            log.error("Link not found: {}", linkId);
-            throw new LinkNotFoundException("Link not found: " + linkId, e);
-        }
-    }
-}
-```
-
----
-
-## Summary
-
-Core patterns provide the foundation for clean, maintainable Spring Boot applications:
-
-1. **Dependency Injection**: Constructor injection with `@RequiredArgsConstructor`
-2. **Service Layer**: Business logic coordination and orchestration
-3. **Repository Pattern**: Data access abstraction with clean APIs
-4. **DTO Pattern**: Separation between layers (GraphQL, REST, domain, external)
-
-Follow these patterns consistently for a well-structured, testable codebase.
+See [testing.md](testing.md) for test techniques and [complete-examples.md](complete-examples.md) for an integrated local-state flow.

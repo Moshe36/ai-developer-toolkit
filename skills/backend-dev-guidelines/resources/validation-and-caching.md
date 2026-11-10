@@ -1,837 +1,260 @@
-# Validation and Caching
+# Validation, State, and Caching
 
-Comprehensive guide to input validation with Jakarta Validation and caching with Caffeine in Spring Boot applications.
-
----
+Validate at trust boundaries, enforce domain invariants at the owning layer, and classify state before choosing an eviction policy. A repository, session registry, observation stream, and disposable cache are not interchangeable.
 
 ## Table of Contents
 
-1. [Jakarta Validation](#jakarta-validation)
-2. [Custom Validators](#custom-validators)
-3. [Caffeine Caching](#caffeine-caching)
-4. [Cache Strategies](#cache-strategies)
-5. [Best Practices](#best-practices)
-6. [Common Pitfalls](#common-pitfalls)
+- [Inspect before choosing annotations or a cache](#inspect-before-choosing-annotations-or-a-cache)
+- [Constraint types and nullability](#constraint-types-and-nullability)
+- [Boundary and method validation](#boundary-and-method-validation)
+- [Cross-field rules](#cross-field-rules)
+- [Validation is not authorization](#validation-is-not-authorization)
+- [Classify state before eviction](#classify-state-before-eviction)
+- [Optional bounded Caffeine configuration](#optional-bounded-caffeine-configuration)
+- [Cache keys, proxies, and result rules](#cache-keys-proxies-and-result-rules)
+- [Immutable values and ownership](#immutable-values-and-ownership)
+- [Invalidation and consistency](#invalidation-and-consistency)
+- [Verification checklist](#verification-checklist)
 
----
+## Inspect before choosing annotations or a cache
 
-## Jakarta Validation
+Read the build, installed validation provider, Spring/Boot versions, controller style, repository implementation, and runtime state owners. Trace all callers of a changed boundary, including scheduled/internal callers and subscription handlers. Inspect current cache managers and dependencies; do not add Caffeine just because a Java service has maps.
 
-### Common Validation Annotations
+Use `jakarta.validation` for Boot 3/4, but check exact integration behavior in the target Spring MVC/GraphQL versions. JDBC/SQLite dependencies alone do not establish durable storage. An observation/session store is not automatically a TTL cache or part of a database transaction.
+
+## Constraint types and nullability
+
+| Value | Appropriate constraint | Important limit |
+|---|---|---|
+| Required text | `@NotBlank`, optionally `@Size` | Already rejects null; adding `@NotNull` is redundant |
+| Required enum/object | `@NotNull` | `@NotBlank` is for character sequences, not enums |
+| Number/range | `@Min`, `@Max`, `@Positive`, `@PositiveOrZero` | Nullable wrappers still need `@NotNull` if required |
+| Optional email/code | `@Email`, `@Pattern` | Null is generally valid; required text needs `@NotBlank` too |
+| Collection | `@NotEmpty` or `@NotNull` plus `@Size` | Container size does not constrain its elements |
+| Nested DTO | `@Valid`, plus `@NotNull` if required | Cascade ignores null; `@Valid` is not a constraint itself |
+| Temporal value | `@Past`, `@Future`, or inclusive variants | Align clock and inclusive/exclusive contract |
+| Duration/byte size | Named validation method or suitable custom/provider constraint | `@Positive Duration`/`DataSize` is unsupported |
+
+Boot 3 / Boot 4 DTO example; each public type normally lives in its existing matching source file:
 
 ```java
-package com.company.project.dto.gql;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import java.util.List;
 
-import jakarta.validation.constraints.*;
+public record CreateDeviceInput(
+        @NotBlank @Size(max = 100) String name,
+        @NotNull DeviceKind kind,
+        @NotNull @Min(1) @Max(100) Integer channelLimit,
+        @Email String contactEmail,
+        @NotEmpty @Size(max = 32) List<@NotNull @Valid ChannelInput> channels) {}
 
-public record CreateRadioInput(
-    @NotNull(message = "Name cannot be null")
-    @NotBlank(message = "Name cannot be blank")
-    @Size(min = 3, max = 100, message = "Name must be between 3 and 100 characters")
-    String name,
-
-    @NotNull(message = "Type is required")
-    RadioTypeGql type,
-
-    @Min(value = 1, message = "Max links must be at least 1")
-    @Max(value = 100, message = "Max links cannot exceed 100")
-    Integer maxLinks,
-
-    @Email(message = "Invalid email format")
-    String contactEmail,
-
-    @Pattern(regexp = "^[A-Z]{2}\\d{3}$", message = "Code must be 2 letters followed by 3 digits")
-    String code
-) {}
+public record ChannelInput(@NotBlank @Size(max = 50) String name) {}
+public enum DeviceKind { SENSOR, GATEWAY }
 ```
 
-### Validation Annotation Reference
+The example's email is optional; blank handling belongs to the explicit API contract. Optional fields need separate tests for missing, explicit null, empty, whitespace, and valid values. A primitive cannot distinguish an omitted value from its default after binding; use a wrapper or the framework's presence-aware input representation for patch semantics. Never normalize missing/null into the same value unless the contract says so.
 
-| Annotation | Description | Example |
-|------------|-------------|---------|
-| `@NotNull` | Value cannot be null | `@NotNull String name` |
-| `@NotBlank` | String cannot be null, empty, or whitespace | `@NotBlank String name` |
-| `@NotEmpty` | Collection/array cannot be null or empty | `@NotEmpty List<String> items` |
-| `@Size` | String/Collection size constraints | `@Size(min=3, max=100) String name` |
-| `@Min` | Number minimum value | `@Min(1) int count` |
-| `@Max` | Number maximum value | `@Max(100) int count` |
-| `@Email` | Valid email format | `@Email String email` |
-| `@Pattern` | Matches regex pattern | `@Pattern(regexp="^[A-Z]+$") String code` |
-| `@Positive` | Number must be positive | `@Positive int amount` |
-| `@PositiveOrZero` | Number must be positive or zero | `@PositiveOrZero int count` |
-| `@Negative` | Number must be negative | `@Negative int debt` |
-| `@Past` | Date must be in the past | `@Past LocalDate birthDate` |
-| `@Future` | Date must be in the future | `@Future LocalDate eventDate` |
-| `@Valid` | Validate nested object | `@Valid Address address` |
+Match GraphQL schema nullability, list-element nullability, enum values, custom scalars, and Java types. GraphQL coercion may reject an input before Bean Validation; neither layer substitutes for the other. Test the actual error shape and classification, without echoing credentials or full rejected payloads.
 
-### Nested Object Validation
+Use validation groups only when a shared DTO genuinely has different contracts and the framework selects those groups. Separate create/update inputs are often clearer. Default-group constraints do not automatically run just because a custom group is selected; use deliberate group composition/sequences and test them. Default messages are acceptable; customize messages when they explain a domain rule or stable public error contract, not merely for style.
+
+## Boundary and method validation
+
+- REST body validation uses `@Valid @RequestBody`; GraphQL annotated arguments can use `@Valid @Argument` with a configured Bean Validation provider. Confirm the integration and error resolver in the installed version, rather than claiming annotations alone always activate validation.
+- Service method validation normally uses a Spring bean annotated `@Validated` and a configured method-validation postprocessor (usually supplied by Boot when validation is installed). External calls must pass through the proxy. Direct construction, self-invocation, and non-interceptable methods do not prove validation works.
+- Spring MVC 6.1+ has native controller method validation. For that path, remove class-level `@Validated` on controllers rather than accidentally selecting the older AOP path. Argument validation and method validation can raise different exceptions (`MethodArgumentNotValidException` versus `HandlerMethodValidationException`); test the target version's mapping. This caveat does not remove `@Validated` from proxied service validation.
+- Constraints on interface methods and overrides must obey Bean Validation inheritance rules; do not strengthen overridden parameter preconditions by adding incompatible constraints to implementations.
+- Return-value constraints can protect a real invariant, but do not assert `@Min(1)` on counts where zero is valid.
+- Keep validation synchronous and local where practical. Uniqueness, authorization, repository existence, and device state transitions usually belong to the service/domain transaction or concurrency boundary, not a validator that performs hidden I/O.
+
+Example service boundary (Boot 3 / Boot 4, validation infrastructure required):
 
 ```java
-public record CreateRadioWithLinksInput(
-    @NotBlank
-    @Size(min = 3, max = 100)
-    String name,
+import jakarta.validation.constraints.NotBlank;
+import org.springframework.stereotype.Service;
+import org.springframework.validation.annotation.Validated;
 
-    @NotNull
-    RadioTypeGql type,
-
-    @Valid  // Validate nested objects
-    @NotEmpty
-    List<CreateLinkInput> links
-) {}
-
-public record CreateLinkInput(
-    @NotBlank
-    @Size(min = 3, max = 50)
-    String name,
-
-    @Size(max = 500)
-    String description
-) {}
-```
-
-### Validation in Controllers
-
-#### GraphQL Controller
-
-```java
-@Controller
-@RequiredArgsConstructor
-public class RadioController {
-    private final RadioService radioService;
-    private final FrontendMapper mapper;
-
-    @MutationMapping("createRadio")
-    public RadioGql createRadio(@Argument("input") @Valid CreateRadioInput input) {
-        // Validation happens automatically before method execution
-        Radio created = radioService.createRadio(mapper.toDomain(input));
-        return mapper.toGql(created);
-    }
-}
-```
-
-#### REST Controller
-
-```java
-@RestController
-@RequestMapping("/api/v1/radios")
-@RequiredArgsConstructor
-public class RadioRestController {
-    private final RadioService radioService;
-    private final RadioMapper mapper;
-
-    @PostMapping
-    public ResponseEntity<RadioDto> createRadio(@RequestBody @Valid CreateRadioRequest request) {
-        // Validation happens automatically
-        Radio created = radioService.createRadio(mapper.toDomain(request));
-        return ResponseEntity.status(HttpStatus.CREATED).body(mapper.toDto(created));
-    }
-}
-```
-
-### Validation Groups
-
-```java
-public interface CreateValidation {}
-public interface UpdateValidation {}
-
-public record RadioInput(
-    @Null(groups = CreateValidation.class)  // Must be null for create
-    @NotNull(groups = UpdateValidation.class)  // Required for update
-    String id,
-
-    @NotBlank(groups = {CreateValidation.class, UpdateValidation.class})
-    String name,
-
-    @NotNull(groups = CreateValidation.class)  // Required for create
-    RadioTypeGql type
-) {}
-
-// Usage
-@MutationMapping("createRadio")
-public RadioGql createRadio(
-    @Argument("input") @Validated(CreateValidation.class) RadioInput input
-) {
-    // Validates with CreateValidation rules
-}
-
-@MutationMapping("updateRadio")
-public RadioGql updateRadio(
-    @Argument("input") @Validated(UpdateValidation.class) RadioInput input
-) {
-    // Validates with UpdateValidation rules
-}
-```
-
-### Method-Level Validation
-
-```java
 @Service
-@Validated  // Enable method-level validation
-@RequiredArgsConstructor
-@Slf4j
-public class RadioService {
-
-    public Radio createRadio(
-        @NotNull @Valid CreateRadioCommand command
-    ) {
-        log.info("Creating radio: {}", command.getName());
-        // Method parameter validated automatically
-        return repository.save(Radio.from(command));
-    }
-
-    @Min(1)
-    public int countActiveRadios() {
-        // Return value validated automatically
-        return repository.countByStatus(RadioStatus.ACTIVE);
+@Validated
+public class DeviceIdPolicy {
+    public String requireDeviceId(@NotBlank String deviceId) {
+        return deviceId;
     }
 }
 ```
 
----
+A plain unit test of `new DeviceIdPolicy()` tests Java behavior, not this annotation. Obtain the bean from a validation-enabled context and assert that invalid input fails through the proxy; see [testing.md](testing.md).
 
-## Custom Validators
+## Cross-field rules
 
-### Custom Annotation
+Prefer existing field constraints and named domain predicates. Introduce a class-level custom constraint only for a real relationship that a single-field annotation cannot express. Define inclusive/exclusive behavior explicitly; do not describe “strictly after” while permitting equality.
+
+Example of an inclusive numeric range. The annotation and validator are separate public types; imports are shown to make the contract unambiguous.
 
 ```java
-package com.company.project.infrastructure.validation;
-
 import jakarta.validation.Constraint;
 import jakarta.validation.Payload;
-import java.lang.annotation.*;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
-@Documented
-@Constraint(validatedBy = RadioNameValidator.class)
-@Target({ElementType.FIELD, ElementType.PARAMETER})
-@Retention(RetentionPolicy.RUNTIME)
-public @interface ValidRadioName {
-    String message() default "Invalid radio name";
-    Class<?>[] groups() default {};
-    Class<? extends Payload>[] payload() default {};
-}
-```
-
-### Validator Implementation
-
-```java
-package com.company.project.infrastructure.validation;
-
-import jakarta.validation.ConstraintValidator;
-import jakarta.validation.ConstraintValidatorContext;
-import lombok.extern.slf4j.Slf4j;
-
-@Slf4j
-public class RadioNameValidator implements ConstraintValidator<ValidRadioName, String> {
-
-    @Override
-    public void initialize(ValidRadioName constraintAnnotation) {
-        // Initialization logic if needed
-    }
-
-    @Override
-    public boolean isValid(String value, ConstraintValidatorContext context) {
-        if (value == null || value.isBlank()) {
-            return false;
-        }
-
-        // Custom validation rules
-        if (value.contains("_")) {
-            context.disableDefaultConstraintViolation();
-            context.buildConstraintViolationWithTemplate(
-                "Radio name cannot contain underscores"
-            ).addConstraintViolation();
-            return false;
-        }
-
-        if (value.startsWith(" ") || value.endsWith(" ")) {
-            context.disableDefaultConstraintViolation();
-            context.buildConstraintViolationWithTemplate(
-                "Radio name cannot have leading or trailing spaces"
-            ).addConstraintViolation();
-            return false;
-        }
-
-        if (!value.matches("^[a-zA-Z0-9 -]+$")) {
-            context.disableDefaultConstraintViolation();
-            context.buildConstraintViolationWithTemplate(
-                "Radio name can only contain letters, numbers, spaces, and hyphens"
-            ).addConstraintViolation();
-            return false;
-        }
-
-        return true;
-    }
-}
-```
-
-### Using Custom Validator
-
-```java
-public record CreateRadioInput(
-    @ValidRadioName
-    String name,
-
-    @NotNull
-    RadioTypeGql type
-) {}
-```
-
-### Cross-Field Validation
-
-```java
-@Constraint(validatedBy = DateRangeValidator.class)
+@Constraint(validatedBy = PollingRangeValidator.class)
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface ValidDateRange {
-    String message() default "End date must be after start date";
+public @interface ValidPollingRange {
+    String message() default "Minimum must not exceed maximum";
     Class<?>[] groups() default {};
     Class<? extends Payload>[] payload() default {};
 }
-
-public class DateRangeValidator implements ConstraintValidator<ValidDateRange, DateRangeInput> {
-
-    @Override
-    public boolean isValid(DateRangeInput value, ConstraintValidatorContext context) {
-        if (value == null || value.startDate() == null || value.endDate() == null) {
-            return true;  // Let @NotNull handle null checks
-        }
-
-        if (value.endDate().isBefore(value.startDate())) {
-            context.disableDefaultConstraintViolation();
-            context.buildConstraintViolationWithTemplate(
-                "End date must be after start date"
-            ).addConstraintViolation();
-            return false;
-        }
-
-        return true;
-    }
-}
-
-@ValidDateRange
-public record DateRangeInput(
-    @NotNull LocalDate startDate,
-    @NotNull LocalDate endDate
-) {}
 ```
 
----
+```java
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 
-## Caffeine Caching
+@ValidPollingRange
+public record PollingRangeInput(
+        @NotNull @Positive Integer minimumSeconds,
+        @NotNull @Positive Integer maximumSeconds) {
 
-### Cache Configuration
+    public boolean hasBothBounds() {
+        return minimumSeconds != null && maximumSeconds != null;
+    }
+
+    public boolean hasOrderedBounds() {
+        return minimumSeconds <= maximumSeconds;
+    }
+}
+```
 
 ```java
-package com.company.project.infrastructure.beans;
+import jakarta.validation.ConstraintValidator;
+import jakarta.validation.ConstraintValidatorContext;
 
+public class PollingRangeValidator
+        implements ConstraintValidator<ValidPollingRange, PollingRangeInput> {
+    @Override
+    public boolean isValid(PollingRangeInput value, ConstraintValidatorContext context) {
+        return value == null || !value.hasBothBounds() || value.hasOrderedBounds();
+    }
+}
+```
+
+The validator leaves null handling to `@NotNull` on the object/fields, and accepts equal bounds. Test null, each missing bound, equal, ordered, reversed, and invalid individual bounds. Keep validators stateless/thread-safe; add property-path violations when clients need a field-specific error. For a reusable property annotation, include the required `FIELD`, `PARAMETER`, `TYPE_USE`, or record-related targets deliberately rather than copying an incompatible target set.
+
+## Validation is not authorization
+
+A valid UUID/client ID does not prove identity, ownership, role, or permission. Check authenticated principal-to-client/session ownership and tenant/resource authorization on every entry path, including subscriptions, keepalive, logout, cancellation, and cache hits. Never accept a caller-supplied tenant/client ID as proof of scope.
+
+Authorize before accessing a cached value. If authorization is inside a `@Cacheable` method body, a hit bypasses it. Keep a non-cached authorization facade calling a separate cached query bean, or use a correctly ordered security interceptor verified by hit/miss tests. Avoid self-invocation as a purported proxy boundary.
+
+## Classify state before eviction
+
+| State | Example responsibility | Retention/invalidation decision |
+|---|---|---|
+| Authoritative in-memory | Current configuration, operation/conflict registry | Explicit lifecycle; arbitrary eviction can lose correctness |
+| Observed state | Latest device snapshot, discovery observations | Freshness/version/source semantics; stale is not necessarily absent |
+| Session state | Authenticated ownership, expiry, subscriptions | Security expiry, logout/revocation and coordinated cleanup |
+| Durable state | Actual database/file-backed records | Persistence/transaction semantics proven by implementation |
+| Disposable derived cache | Recomputable expensive lookup/projection | Bounded memory and tolerated staleness; removal must be safe |
+
+Choose a cache only after specifying source of truth, miss behavior, freshness tolerance, key cardinality, ownership, concurrency, and invalidation events. Session expiry may trigger stream/transport cleanup; replacing it with a generic TTL cache can silently discard that behavior. If no disposable expensive lookup exists, no cache is necessary.
+
+## Optional bounded Caffeine configuration
+
+Use this only when Caffeine and Spring cache support are installed and appropriate. Confirm Boot 4's modular cache dependencies rather than assuming a starter from another release exists. `@EnableCaching` installs interception; defining a manager alone does not make annotations run.
+
+```java
 import com.github.benmanes.caffeine.cache.Caffeine;
-import org.springframework.cache.CacheManager;
+import java.time.Duration;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.cache.caffeine.CaffeineCacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import java.util.concurrent.TimeUnit;
 
-@Configuration
+@Configuration(proxyBeanMethods = false)
 @EnableCaching
-public class CacheConfiguration {
-
+class LookupCacheConfiguration {
     @Bean
-    public CacheManager cacheManager(AppConfigs appConfigs) {
-        CaffeineCacheManager cacheManager = new CaffeineCacheManager("radios", "links", "users");
-
-        cacheManager.setCaffeine(Caffeine.newBuilder()
-            .maximumSize(appConfigs.cacheSize())
-            .expireAfterWrite(appConfigs.cacheTtlMinutes(), TimeUnit.MINUTES)
-            .recordStats());
-
-        return cacheManager;
+    CaffeineCacheManager cacheManager() {
+        var manager = new CaffeineCacheManager("deviceViews", "deviceLists");
+        manager.setAllowNullValues(false);
+        manager.setCaffeine(Caffeine.newBuilder()
+                .maximumSize(1_000)
+                .expireAfterWrite(Duration.ofSeconds(30))
+                .recordStats());
+        return manager;
     }
 }
 ```
 
-### @Cacheable - Cache Results
+Size and TTL here are illustrative, not production capacity advice. Promote them to validated properties if operational tuning requires it. Bound by weight rather than entry count if values vary greatly in size. `recordStats()` enables provider statistics; it does not prove metrics are exported. Cache warming is optional: bound its workload and call a proxied query bean rather than self-invoking annotations or creating an uncontrolled startup stampede.
+
+## Cache keys, proxies, and result rules
+
+- `@Cacheable` can skip method execution on a hit. It must not hide required writes, audit/notification effects, or per-request security checks.
+- `@CachePut` always invokes the method and stores its result. It is not a transaction-aware write-through store by itself.
+- `@CacheEvict` normally runs after successful invocation; `beforeInvocation=true` changes failure behavior, not commit semantics. `@Caching` combines related operations.
+- Cache advice normally uses Spring proxies: self-invocation bypasses caching and eviction. Test through the real bean. Use a separate existing query/service boundary rather than a self-injected proxy workaround.
+- `condition` is evaluated before invocation and cannot use `#result`. `unless` can veto storage after the result exists. With `Optional`, Spring normally unwraps the contained value; `#result` refers to that value, not the `Optional` wrapper.
+- Define negative-cache behavior explicitly. With null values disabled, exclude null results or return/throw according to a documented not-found contract. Do not accidentally cache absence forever, or promise that a nullable method is never cached without checking the provider/settings.
+- `sync=true` has provider and annotation restrictions (including no `unless`) and is not distributed single-flight. Concurrent misses, refresh, load failure, and cancellation still need tests appropriate to the provider/version.
+
+Example annotation on an existing public proxied query method:
 
 ```java
-@Service
-@RequiredArgsConstructor
-@Slf4j
-public class RadioService {
-    private final RadioRepository radioRepository;
-
-    @Cacheable(value = "radios", key = "#radioId")
-    public Radio getRadio(String radioId) {
-        log.info("Fetching radio from repository: {}", radioId);
-        return radioRepository.findById(radioId)
-            .orElseThrow(() -> new ResourceNotFoundException("Radio", radioId));
-    }
-
-    @Cacheable(value = "radios", key = "'all'")
-    public List<Radio> getAllRadios() {
-        log.info("Fetching all radios from repository");
-        return radioRepository.findAll();
-    }
+@Cacheable(cacheNames = "deviceViews", unless = "#result == null")
+public DeviceView findView(String tenantId, String deviceId) {
+    return source.findView(tenantId, deviceId);
 }
 ```
 
-### @CacheEvict - Invalidate Cache
+`source` is the application's actual lookup collaborator, and `DeviceView` is the immutable snapshot below. This fragment intentionally uses Spring's default multi-argument `SimpleKey`; it preserves argument boundaries instead of concatenating ambiguous strings. Scope the cache region to this method's key contract, or use a dedicated record key/key generator when methods would collide. Include tenant, authorization-relevant scope, locale/filter/version when they change the result. Authentication/authorization must execute **outside** this cached method on every request.
+
+If a SpEL key uses parameter names, verify compiler parameter metadata; `#p0`/`#p1` are positional alternatives. Do not put an individual lookup and a list lookup into the same region under colliding keys such as a literal `"all"` that could also be an ID.
+
+## Immutable values and ownership
 
 ```java
-@Service
-@RequiredArgsConstructor
-@Slf4j
-public class RadioService {
-    private final RadioRepository radioRepository;
+import java.util.List;
 
-    @CacheEvict(value = "radios", key = "#radioId")
-    public void deleteRadio(String radioId) {
-        log.info("Deleting radio: {}", radioId);
-        radioRepository.deleteById(radioId);
-        // Cache entry removed automatically
-    }
-
-    @CacheEvict(value = "radios", allEntries = true)
-    public void clearAllRadios() {
-        log.info("Clearing all radios from cache");
-        // All cache entries removed
+public record DeviceView(String id, String name, List<String> tags) {
+    public DeviceView {
+        tags = List.copyOf(tags);
     }
 }
 ```
 
-### @CachePut - Update Cache
+This snapshot is immutable because the elements are immutable strings. `List.copyOf` copies the container, not arbitrary mutable nested objects, and rejects null elements. A record containing a mutable model/list is not deeply immutable merely because it is a record.
 
-```java
-@Service
-@RequiredArgsConstructor
-@Slf4j
-public class RadioService {
-    private final RadioRepository radioRepository;
+Copying a mutable value **inside a `@Cacheable` method does not protect cache hits**: that returned object becomes the shared cached object and the method body does not run on hits. Prefer immutable cache values. If an existing API requires mutable results, put a copying facade **outside** the cached bean so every hit and miss passes through the ownership conversion; copy all mutable parts deliberately and test them. Do not promise safe “deep copies” from a builder, serialization roundtrip, or one shallow list copy.
 
-    @CachePut(value = "radios", key = "#result.id")
-    public Radio updateRadio(String radioId, UpdateRadioCommand command) {
-        log.info("Updating radio: {}", radioId);
-        Radio radio = getRadio(radioId);
-        radio.setName(command.getName());
-        radio.setStatus(command.getStatus());
-        Radio updated = radioRepository.save(radio);
-        // Cache updated with new value
-        return updated;
-    }
-}
-```
+## Invalidation and consistency
 
-### Multiple Cache Operations
+Map every write/event to affected entries: individual projections, parent/child views, lists, filtered searches, aggregates, negative entries, and any authorization-derived views. Updating one item does not invalidate cached lists automatically.
 
-```java
-@Service
-@RequiredArgsConstructor
-@Slf4j
-public class RadioService {
+- Use targeted eviction when the key is known, or bounded-region eviction when affected list keys cannot be enumerated. Broad `allEntries=true` is simple but can cause load spikes and evicts other tenants in a shared region; choose deliberately.
+- For an actual transactional store, synchronize mutation/eviction with **successful commit** using the project's transaction-aware cache integration or after-commit event handling. Test rollback and the commit/eviction failure window. `@Transactional` plus `@CachePut` does not by itself establish the required advice order or atomicity.
+- After-commit eviction avoids publishing rolled-back state, but it does not eliminate every race: an older concurrent read can repopulate stale data after eviction. Use versioned keys/values, source-version checks, serialized updates, or another explicit strategy when that consistency matters.
+- A local Caffeine cache is process-local. Multiple nodes do not invalidate each other automatically. A distributed provider likewise does not make database/cache updates atomic or authorization revocation immediate. Define cross-node invalidation, failure behavior, and acceptable staleness before adopting it.
+- Observed state should reflect ACK/confirmation semantics rather than optimistic cache mutation unless the product explicitly distinguishes desired and observed values. Timeout does not prove nondelivery; late responses must not overwrite newer state without a correlation/version rule.
+- Manual cache-aside code is appropriate only when annotations cannot express the lifecycle. Preserve null handling, load failures, races, and security; do not duplicate both manual lookup and annotations for the same operation.
 
-    @Caching(
-        evict = {
-            @CacheEvict(value = "radios", key = "#radioId"),
-            @CacheEvict(value = "links", allEntries = true)
-        }
-    )
-    public void deleteRadioWithLinks(String radioId) {
-        log.info("Deleting radio and all links: {}", radioId);
-        radioRepository.deleteById(radioId);
-    }
-}
-```
+## Verification checklist
 
-### Conditional Caching
+- Test valid/invalid/null inputs and nested null elements through the real API boundary; test Bean Validation itself separately when useful.
+- Test class-level relationships and any group selection; assert the intended violation path/type, not only an arbitrary failure.
+- Test actual proxy validation/caching, cache hit and miss, tenant separation, immutable-value ownership, null/negative lookup behavior, and load failures.
+- Test updates/deletes plus list/search invalidation; include transaction rollback/commit effects only when real transactions exist.
+- Test unauthorized calls with a warm cache, revocation/session expiry, and multi-node behavior if deployed that way.
+- Use a controllable ticker/clock where supported to test expiry without sleeps. Observe bounded capacity and actual provider statistics/exports rather than assuming Actuator proves them.
 
-```java
-@Service
-@RequiredArgsConstructor
-@Slf4j
-public class RadioService {
-
-    // Only cache if result is not null
-    @Cacheable(value = "radios", key = "#radioId", unless = "#result == null")
-    public Radio findRadio(String radioId) {
-        return radioRepository.findById(radioId).orElse(null);
-    }
-
-    // Only cache active radios
-    @Cacheable(value = "radios", key = "#radioId", condition = "#result.status == T(com.company.project.enums.RadioStatus).ACTIVE")
-    public Radio getRadio(String radioId) {
-        return radioRepository.findById(radioId).orElseThrow();
-    }
-}
-```
-
-### Custom Cache Key
-
-```java
-@Service
-@RequiredArgsConstructor
-@Slf4j
-public class LinkService {
-
-    // Custom cache key combining multiple parameters
-    @Cacheable(value = "links", key = "#radioId + '-' + #linkId")
-    public Link getLink(String radioId, String linkId) {
-        log.info("Fetching link: {} from radio: {}", linkId, radioId);
-        return linkRepository.findByRadioIdAndLinkId(radioId, linkId)
-            .orElseThrow(() -> new ResourceNotFoundException("Link", linkId));
-    }
-
-    // Using SpEL for complex keys
-    @Cacheable(value = "links", key = "T(String).format('%s-%s', #radioId, #status.name())")
-    public List<Link> getLinksByStatus(String radioId, LinkStatus status) {
-        return linkRepository.findByRadioIdAndStatus(radioId, status);
-    }
-}
-```
-
----
-
-## Cache Strategies
-
-### Cache-Aside Pattern
-
-```java
-@Service
-@RequiredArgsConstructor
-@Slf4j
-public class RadioService {
-    private final RadioRepository radioRepository;
-    private final CacheManager cacheManager;
-
-    public Radio getRadio(String radioId) {
-        // Check cache first
-        Cache cache = cacheManager.getCache("radios");
-        if (cache != null) {
-            Radio cached = cache.get(radioId, Radio.class);
-            if (cached != null) {
-                log.info("Cache hit for radio: {}", radioId);
-                return cached;
-            }
-        }
-
-        // Cache miss - fetch from repository
-        log.info("Cache miss for radio: {}", radioId);
-        Radio radio = radioRepository.findById(radioId)
-            .orElseThrow(() -> new ResourceNotFoundException("Radio", radioId));
-
-        // Update cache
-        if (cache != null) {
-            cache.put(radioId, radio);
-        }
-
-        return radio;
-    }
-}
-```
-
-### Write-Through Pattern
-
-```java
-@Service
-@RequiredArgsConstructor
-@Slf4j
-public class RadioService {
-
-    @CachePut(value = "radios", key = "#result.id")
-    @Transactional
-    public Radio createRadio(CreateRadioCommand command) {
-        log.info("Creating radio: {}", command.getName());
-        Radio radio = Radio.from(command);
-        Radio saved = radioRepository.save(radio);
-        // Cache updated automatically after save
-        return saved;
-    }
-}
-```
-
-### Cache Warming
-
-```java
-@Component
-@RequiredArgsConstructor
-@Slf4j
-public class CacheWarmer {
-    private final RadioService radioService;
-    private final RadioRepository radioRepository;
-
-    @EventListener(ApplicationReadyEvent.class)
-    public void warmCache() {
-        log.info("Warming cache with active radios");
-        List<Radio> activeRadios = radioRepository.findByStatus(RadioStatus.ACTIVE);
-
-        for (Radio radio : activeRadios) {
-            radioService.getRadio(radio.getId());  // Triggers @Cacheable
-        }
-
-        log.info("Cache warmed with {} radios", activeRadios.size());
-    }
-}
-```
-
-### Cache Statistics
-
-```java
-@Service
-@RequiredArgsConstructor
-@Slf4j
-public class CacheMonitoringService {
-    private final CacheManager cacheManager;
-
-    @Scheduled(fixedRate = 60000)  // Every minute
-    public void logCacheStats() {
-        Collection<String> cacheNames = cacheManager.getCacheNames();
-
-        for (String cacheName : cacheNames) {
-            Cache cache = cacheManager.getCache(cacheName);
-            if (cache instanceof CaffeineCache caffeineCache) {
-                com.github.benmanes.caffeine.cache.Cache<Object, Object> nativeCache =
-                    caffeineCache.getNativeCache();
-
-                CacheStats stats = nativeCache.stats();
-                log.info("Cache '{}' stats: hits={}, misses={}, hitRate={}",
-                    cacheName,
-                    stats.hitCount(),
-                    stats.missCount(),
-                    stats.hitRate());
-            }
-        }
-    }
-}
-```
-
----
-
-## Best Practices
-
-### 1. Always Use @Valid for Input Validation
-
-```java
-// GOOD: Validate input
-@MutationMapping("createRadio")
-public RadioGql createRadio(@Argument("input") @Valid CreateRadioInput input) {
-    // Input validated automatically
-}
-
-// BAD: No validation
-@MutationMapping("createRadio")
-public RadioGql createRadio(@Argument("input") CreateRadioInput input) {
-    // Invalid data can reach service layer
-}
-```
-
-### 2. Use Appropriate Cache Keys
-
-```java
-// GOOD: Specific cache key
-@Cacheable(value = "links", key = "#radioId + '-' + #linkId")
-public Link getLink(String radioId, String linkId) {
-    // Unique key per link
-}
-
-// BAD: Generic cache key
-@Cacheable(value = "links", key = "'link'")
-public Link getLink(String radioId, String linkId) {
-    // All links share same cache entry!
-}
-```
-
-### 3. Clear Cache on Updates
-
-```java
-// GOOD: Clear cache on update
-@CacheEvict(value = "radios", key = "#radioId")
-public void deleteRadio(String radioId) {
-    radioRepository.deleteById(radioId);
-}
-
-// BAD: Cache not cleared
-public void deleteRadio(String radioId) {
-    radioRepository.deleteById(radioId);
-    // Stale data remains in cache!
-}
-```
-
-### 4. Use Custom Messages
-
-```java
-// GOOD: Custom messages
-public record CreateRadioInput(
-    @NotBlank(message = "Radio name is required")
-    @Size(min = 3, max = 100, message = "Radio name must be between 3 and 100 characters")
-    String name
-) {}
-
-// BAD: Default messages
-public record CreateRadioInput(
-    @NotBlank
-    @Size(min = 3, max = 100)
-    String name
-) {}
-```
-
-### 5. Validate Nested Objects
-
-```java
-// GOOD: Validate nested objects
-public record CreateRadioWithLinksInput(
-    @NotBlank String name,
-    @Valid @NotEmpty List<CreateLinkInput> links
-) {}
-
-// BAD: No validation on nested objects
-public record CreateRadioWithLinksInput(
-    @NotBlank String name,
-    List<CreateLinkInput> links  // Links not validated!
-) {}
-```
-
----
-
-## Common Pitfalls
-
-### 1. Missing @EnableCaching
-
-```java
-// BAD: Caching not enabled
-@Configuration
-public class CacheConfiguration {
-    @Bean
-    public CacheManager cacheManager() {
-        // Cache manager defined but caching not enabled
-        return new CaffeineCacheManager();
-    }
-}
-
-// GOOD: Enable caching
-@Configuration
-@EnableCaching
-public class CacheConfiguration {
-    @Bean
-    public CacheManager cacheManager() {
-        return new CaffeineCacheManager();
-    }
-}
-```
-
-### 2. Caching Mutable Objects
-
-```java
-// BAD: Caching mutable object
-@Cacheable("radios")
-public Radio getRadio(String radioId) {
-    return radioRepository.findById(radioId).orElseThrow();
-}
-
-// Caller can modify cached object!
-Radio radio = service.getRadio("123");
-radio.setName("Modified");  // Modifies cached instance!
-
-// GOOD: Return defensive copy
-@Cacheable("radios")
-public Radio getRadio(String radioId) {
-    Radio radio = radioRepository.findById(radioId).orElseThrow();
-    return Radio.builder()
-        .id(radio.getId())
-        .name(radio.getName())
-        .status(radio.getStatus())
-        .build();  // Return copy
-}
-```
-
-### 3. Not Clearing Cache on Updates
-
-```java
-// BAD: Cache not cleared
-public Radio updateRadio(String radioId, UpdateRadioCommand command) {
-    Radio radio = getRadio(radioId);  // Gets from cache
-    radio.setName(command.getName());
-    return radioRepository.save(radio);
-    // Cache still has old data!
-}
-
-// GOOD: Clear or update cache
-@CachePut(value = "radios", key = "#radioId")
-public Radio updateRadio(String radioId, UpdateRadioCommand command) {
-    Radio radio = getRadio(radioId);
-    radio.setName(command.getName());
-    return radioRepository.save(radio);
-    // Cache updated with new data
-}
-```
-
-### 4. Caching Methods with Side Effects
-
-```java
-// BAD: Caching method with side effects
-@Cacheable("radios")
-public Radio getRadio(String radioId) {
-    Radio radio = radioRepository.findById(radioId).orElseThrow();
-    // Side effect: logging, metrics, external calls
-    externalClient.notifyAccess(radioId);
-    return radio;
-}
-// Side effect only happens on cache miss!
-
-// GOOD: Separate concerns
-@Cacheable("radios")
-public Radio getRadio(String radioId) {
-    return radioRepository.findById(radioId).orElseThrow();
-}
-
-public Radio getRadioWithNotification(String radioId) {
-    Radio radio = getRadio(radioId);  // Cached
-    externalClient.notifyAccess(radioId);  // Always happens
-    return radio;
-}
-```
-
-### 5. Missing @Validated on Service
-
-```java
-// BAD: Method-level validation doesn't work
-@Service
-public class RadioService {
-    public Radio createRadio(@NotNull @Valid CreateRadioCommand command) {
-        // Validation not applied!
-    }
-}
-
-// GOOD: Enable validation with @Validated
-@Service
-@Validated
-public class RadioService {
-    public Radio createRadio(@NotNull @Valid CreateRadioCommand command) {
-        // Validation applied automatically
-    }
-}
-```
-
----
-
-## Summary
-
-Validation and caching in Spring Boot follow these key patterns:
-
-### Validation:
-1. **Jakarta Validation annotations** (`@NotNull`, `@NotBlank`, `@Size`, etc.)
-2. **`@Valid` on controller parameters** for automatic validation
-3. **Custom validators** for complex validation rules
-4. **Method-level validation** with `@Validated` on service classes
-5. **Validation groups** for different validation scenarios
-6. **Custom error messages** for better user experience
-
-### Caching:
-1. **`@EnableCaching`** to enable caching support
-2. **`@Cacheable`** to cache method results
-3. **`@CacheEvict`** to remove cache entries
-4. **`@CachePut`** to update cache
-5. **Caffeine for cache implementation** (high performance)
-6. **Appropriate cache keys** for unique identification
-7. **Clear cache on updates** to avoid stale data
-8. **Monitor cache statistics** for optimization
-
-Follow these patterns for robust input validation and efficient caching.
+See [configuration.md](configuration.md) for validated properties, lifecycle and secrets; see [testing.md](testing.md) for the version-aware execution and integration test boundaries.

@@ -24,30 +24,39 @@
             "type": "domain",
             "enforcement": "suggest",
             "priority": "high",
-            "description": "Backend development patterns for Java 21, Spring Boot 3.x, GraphQL, REST APIs",
+            "description": "Project-aware Java/Spring backend design, APIs, security, async/state contracts, configuration, and testing across Boot 3/4",
             "promptTriggers": {
                 "keywords": [
                     "spring boot",
-                    "controller",
-                    "graphql",
+                    "spring graphql",
                     "mapstruct",
-                    "repository"
+                    "lombok",
+                    "completablefuture",
+                    "backend-dev-guidelines"
                 ],
                 "intentPatterns": [
-                    "(create|implement).*(controller|service|repository|endpoint|API)",
-                    "(add|implement).*(validation|caching|async)",
-                    "spring.*(bean|cache|security)"
+                    "^(?=[\\s\\S]*\\b(java|spring|jpa|jdbc|hibernate|jackson|reactor)\\b)[\\s\\S]*\\b(controller|service|repository|endpoint|api|validation|caching|async|concurrency|cancellation|deadline|timeout|shutdown|lifecycle|security|authorization|jwt|websocket|bean|serialization|migration|test|tests)\\b",
+                    "^(?=[\\s\\S]*\\b(spring|jpa|jdbc|hibernate|jackson|reactor)\\b)[\\s\\S]*\\b(create|implement|add|fix|debug|refactor|review|test|configure|migrate|upgrade)\\b",
+                    "\\bvirtual[- ]threads?\\b",
+                    "\\b(QueryMapping|MutationMapping|SubscriptionMapping|GraphQlTest|WebMvcTest|ConfigurationProperties|PreAuthorize)\\b",
+                    "^(?![\\s\\S]*\\b(frontend|react|angular|vue|apollo|express|nestjs|node\\.?js|python|django|fastapi|asp\\.net)\\b)(?=[\\s\\S]*\\bbackend\\b)[\\s\\S]*\\b(controller|service|repository|endpoint|api|jwt|authorization|authentication|security|subscription|persistence|validation|caching)\\b",
+                    "^(?![\\s\\S]*\\b(frontend|react|angular|vue|apollo|express|nestjs|node\\.?js|python|django|fastapi|asp\\.net)\\b)(?=[\\s\\S]*\\bgraphql\\b)[\\s\\S]*\\b(schema|resolver|resolvers|subscription|subscriptions|server)\\b"
                 ]
             },
             "fileTriggers": {
                 "pathPatterns": [
                     "**/src/main/java/**/*.java",
-                    "**/src/main/resources/**/*.yml",
-                    "**/src/main/resources/graphql/**/*.graphqls"
+                    "**/src/test/java/**/*.java",
+                    "**/src/{main,test}/resources/**/*.{yml,yaml,properties}",
+                    "**/src/main/resources/graphql/**/*.{graphqls,gqls}",
+                    "**/pom.xml",
+                    "**/build.gradle",
+                    "**/build.gradle.kts"
                 ],
                 "pathExclusions": [
-                    "**/src/test/**/*.java",
-                    "**/*Test.java"
+                    "**/target/**",
+                    "**/build/**",
+                    "**/generated-sources/**"
                 ],
                 "contentPatterns": [
                     "@Service",
@@ -56,6 +65,12 @@
                     "@Repository",
                     "@QueryMapping",
                     "@MutationMapping",
+                    "@SubscriptionMapping",
+                    "@PreAuthorize",
+                    "@ConfigurationProperties",
+                    "@GraphQlTest",
+                    "@WebMvcTest",
+                    "@MockitoBean",
                     "@Mapper.*componentModel"
                 ]
             }

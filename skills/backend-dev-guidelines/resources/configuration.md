@@ -1,758 +1,281 @@
-# Configuration Management
+# Configuration and Runtime Resources
 
-Comprehensive guide to application configuration in Spring Boot using records, @ConfigurationProperties, bean definitions, and profiles.
-
----
+Use this reference for property binding, dependency compatibility, and ownership of runtime resources. Examples require the indicated installed stack.
 
 ## Table of Contents
 
-1. [Configuration with Records](#configuration-with-records)
-2. [Bean Configuration](#bean-configuration)
-3. [Profile-Specific Configuration](#profile-specific-configuration)
-4. [Virtual Threads Configuration](#virtual-threads-configuration)
-5. [External Client Configuration](#external-client-configuration)
-6. [Best Practices](#best-practices)
-7. [Common Pitfalls](#common-pitfalls)
+- [Inspect the compatibility and runtime baseline](#inspect-the-compatibility-and-runtime-baseline)
+- [Validated configuration records](#validated-configuration-records)
+- [Binding tests](#binding-tests)
+- [Profiles, secrets, and safe diagnostics](#profiles-secrets-and-safe-diagnostics)
+- [Dependency and processor configuration](#dependency-and-processor-configuration)
+- [Executors, scheduling, and lifecycle](#executors-scheduling-and-lifecycle)
+- [External clients and blocking boundaries](#external-clients-and-blocking-boundaries)
+- [UDP transport boundaries](#udp-transport-boundaries)
+- [Operational verification](#operational-verification)
 
----
+## Inspect the compatibility and runtime baseline
 
-## Configuration with Records
+Before suggesting properties, imports, starters, or replacement beans:
 
-### Basic Configuration Record
+- Check the parent/BOM, toolchain, active profiles, actual mapper beans, and resource lifecycle owners.
+- Distinguish MVC from WebFlux; Reactor alone does not establish a reactive server. Trace client/repository implementations rather than inferring them from dependencies.
+
+Boot 3 and Boot 4 are not import-compatible everywhere. Jackson 2 application mappers (`com.fasterxml.jackson.databind`) may coexist with Jackson 3 dependencies. Jackson 3 core/databind use `tools.jackson.core` and `tools.jackson.databind`; shared annotations still use `com.fasterxml.jackson.annotation`. Do not mechanically rename imports or replace a mapper without testing modules, serializers, and every protocol using it.
+
+## Validated configuration records
+
+Use cohesive, constructor-bound records and the validation starter/provider matching the build. Registration is required: choose `@ConfigurationPropertiesScan` on the application or explicit `@EnableConfigurationProperties`, not both for the same type. Do not register a constructor-bound record as an ordinary `@Component`.
+
+**Boot 3 / Boot 4 common API:** the following record has usable defaults even when its entire nested section is absent. Imports are explicit because Jackson binding is not involved.
 
 ```java
-package com.company.project.infrastructure.beans;
-
-import com.fasterxml.jackson.annotation.JsonProperty;
-import jakarta.annotation.PostConstruct;
-import lombok.extern.slf4j.Slf4j;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 import org.springframework.validation.annotation.Validated;
 
-@ConfigurationProperties(prefix = "app.configs")
+@ConfigurationProperties("app.transport")
 @Validated
-@Slf4j
-public record AppConfigs(
-    @JsonProperty("http-timeout-ms")
-    @DefaultValue("5000")
-    int httpTimeoutMs,
+public record TransportProperties(
+        @Valid @NotNull @DefaultValue Client client,
+        @DefaultValue("64") @Positive int maxInFlight) {
 
-    @JsonProperty("cache-size")
-    @DefaultValue("1000")
-    int cacheSize,
+    public record Client(
+            @NotNull @DefaultValue("2s") Duration connectTimeout,
+            @NotNull @DefaultValue("5s") Duration readTimeout) {
 
-    @JsonProperty("max-retries")
-    @DefaultValue("3")
-    int maxRetries
-) {
-    @PostConstruct
-    public void init() {
-        log.info("Loaded application configuration: {}", this);
+        @AssertTrue(message = "Transport timeouts must be positive")
+        public boolean isTimeoutConfigurationValid() {
+            return isAbsentOrPositive(connectTimeout) && isAbsentOrPositive(readTimeout);
+        }
+
+        private static boolean isAbsentOrPositive(Duration timeout) {
+            return timeout == null || (!timeout.isZero() && !timeout.isNegative());
+        }
     }
 }
 ```
 
-**application.yml:**
-```yaml
-app:
-  configs:
-    http-timeout-ms: 5000
-    cache-size: 1000
-    max-retries: 3
-```
-
-### Enable Configuration Properties
+`@NotNull` handles missing values; the named duration predicate handles zero/negative values. Jakarta `@Positive` supports numbers, **not `Duration`**. For several reusable duration constraints, use a small custom validator or an already-installed provider's duration constraint, with tests; do not assume an unsupported annotation works.
 
 ```java
-package com.company.project;
-
-import com.company.project.infrastructure.beans.AppConfigs;
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Configuration;
 
-@SpringBootApplication
-@EnableConfigurationProperties(AppConfigs.class)
-public class Application {
-    public static void main(String[] args) {
-        SpringApplication.run(Application.class, args);
-    }
-}
+@Configuration(proxyBeanMethods = false)
+@EnableConfigurationProperties(TransportProperties.class)
+class TransportConfiguration {}
 ```
 
-### Using Configuration in Services
-
-```java
-@Service
-@RequiredArgsConstructor
-@Slf4j
-public class RadioClient {
-    private final AppConfigs appConfigs;
-    private final WebClient webClient;
-
-    public void syncRadio(Radio radio) {
-        log.info("Syncing radio with timeout: {}ms", appConfigs.httpTimeoutMs());
-
-        webClient.post()
-            .uri("/radios")
-            .bodyValue(radio)
-            .retrieve()
-            .bodyToMono(Void.class)
-            .timeout(Duration.ofMillis(appConfigs.httpTimeoutMs()))
-            .block();
-    }
-}
-```
-
-### Nested Configuration
-
-```java
-@ConfigurationProperties(prefix = "app")
-@Validated
-public record AppConfiguration(
-    Server server,
-    Cache cache,
-    External external
-) {
-    public record Server(
-        @DefaultValue("8080")
-        int port,
-
-        @DefaultValue("true")
-        boolean enableVirtualThreads
-    ) {}
-
-    public record Cache(
-        @DefaultValue("1000")
-        int maxSize,
-
-        @DefaultValue("60")
-        int ttlMinutes
-    ) {}
-
-    public record External(
-        @DefaultValue("http://localhost:8081")
-        String baseUrl,
-
-        @DefaultValue("5000")
-        int timeoutMs
-    ) {}
-}
-```
-
-**application.yml:**
 ```yaml
 app:
-  server:
-    port: 8080
-    enable-virtual-threads: true
-  cache:
-    max-size: 1000
-    ttl-minutes: 60
-  external:
-    base-url: http://localhost:8081
-    timeout-ms: 5000
+  transport:
+    max-in-flight: 64
+    client:
+      connect-timeout: 2s
+      read-timeout: 5s
 ```
 
-### Configuration with Validation
+- Empty `@DefaultValue` instantiates the nested record when no nested keys bind; `@Valid` cascades into it. Neither replaces the other. Use `@NotNull` for required nested sections without defaults.
+- Boot relaxed binding maps `max-in-flight` to `maxInFlight`; Jackson `@JsonProperty` does not control configuration binding. Kebab-case is the canonical file spelling; do not falsely reject every underscore/camel-case spelling accepted by a source's relaxed binding rules. Environment-variable transformations differ; test deployment names.
+- Prefer `Duration` with explicit units (`500ms`, `5s`) over unitless numbers. Preserve old `*-ms` contracts during migration or provide a deliberate compatibility plan. Use `DataSize` (`64KB`, `2MB`) for byte limits where useful, with an actual positive/range validator; numeric constraints do not automatically apply to it.
+- Records are only shallowly immutable. Copy mutable collection components where ownership requires it, and constrain entries with container-element annotations.
+- Separate required deployment values from safe local defaults. Missing credentials and unsafe production combinations should fail startup, not silently select a mock or permissive mode.
+
+## Binding tests
+
+Use `ApplicationContextRunner` to test binding and validation without starting a server. It does **not** load every `application.yml` automatically. Supply the intended properties or deliberately add config-data initialization for a file-loading test.
+
+Choose exactly one validation import:
+
+| Target | Import |
+|---|---|
+| Boot 3 | `org.springframework.boot.autoconfigure.validation.ValidationAutoConfiguration` |
+| Boot 4 | `org.springframework.boot.validation.autoconfigure.ValidationAutoConfiguration` |
+
+The remaining imports are common to both lines. This example uses the **Boot 4** import and the record/registration above; include the matching validation test/runtime dependencies.
 
 ```java
-@ConfigurationProperties(prefix = "app.radio")
-@Validated
-public record RadioConfiguration(
-    @NotBlank(message = "API URL is required")
-    String apiUrl,
+import java.time.Duration;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.validation.autoconfigure.ValidationAutoConfiguration;
+import static org.assertj.core.api.Assertions.assertThat;
 
-    @Min(value = 1000, message = "Timeout must be at least 1000ms")
-    @Max(value = 60000, message = "Timeout cannot exceed 60000ms")
-    int timeoutMs,
+class TransportPropertiesTest {
+    private final ApplicationContextRunner runner = new ApplicationContextRunner()
+            .withConfiguration(AutoConfigurations.of(ValidationAutoConfiguration.class))
+            .withUserConfiguration(TransportConfiguration.class);
 
-    @Size(min = 1, message = "At least one allowed status required")
-    List<String> allowedStatuses
-) {
-    @PostConstruct
-    public void init() {
-        log.info("Radio configuration loaded: {}", this);
+    @Test
+    void bindsAbsentNestedSectionWithDefaults() {
+        runner.run(context -> {
+            assertThat(context).hasNotFailed();
+            var properties = context.getBean(TransportProperties.class);
+            assertThat(properties.client().connectTimeout()).isEqualTo(Duration.ofSeconds(2));
+            assertThat(properties.maxInFlight()).isEqualTo(64);
+        });
+    }
+
+    @Test
+    void bindsExplicitUnitOverride() {
+        runner.withPropertyValues("app.transport.client.read-timeout=750ms")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getBean(TransportProperties.class).client().readTimeout())
+                            .isEqualTo(Duration.ofMillis(750));
+                });
+    }
+
+    @Test
+    void rejectsNonPositiveNestedTimeout() {
+        runner.withPropertyValues("app.transport.client.read-timeout=0s")
+                .run(context -> assertThat(context).hasFailed());
     }
 }
 ```
 
----
+Also test malformed units, negative values, nested required fields, collection elements, profile overrides, and any cross-field rules. Assert the relevant cause/message when more than one startup failure could satisfy `hasFailed()`. A direct `new TransportProperties(...)` test does not prove binding, registration, or validation.
 
-## Bean Configuration
+## Profiles, secrets, and safe diagnostics
 
-### Configuration Class
+Keep shared safe defaults in `application.yml`, intentional environment differences in `application-{profile}.yml`, and secrets outside source control. Activate deployment profiles externally (`SPRING_PROFILES_ACTIVE=prod` or `--spring.profiles.active=prod`). Do not commit `spring.profiles.active=dev` as a production fallback.
+
+```yaml
+# application-prod.yml; illustrative external credentials, not a required HTTP architecture
+app:
+  upstream:
+    base-url: ${UPSTREAM_BASE_URL}
+    api-key: ${UPSTREAM_API_KEY}
+```
+
+- Use the deployment's secret store, mounted/config-tree secrets, or protected environment injection. Avoid command-line secrets, default credentials, real tokens in test fixtures, and secrets embedded in URLs.
+- Prefer explicit conditional beans/profiles for a mock versus a real client. Avoid a `@ConditionalOnMissingBean` mock fallback that masks broken production wiring; test that exactly the intended implementation starts.
+- Profile-specific datasource beans are relevant **only if persistence exists**. Prefer the installed Boot datasource auto-configuration to duplicating pools and credentials manually.
+- Do not log a configuration record's `toString()`, dump the environment, log authorization headers, or dump request/datagram bodies indiscriminately. Record-generated `toString()` includes secrets.
+- Log an allowlisted operational summary, e.g. timeout, queue capacity, enabled transport, and profile. Omit full URLs/query strings and sensitive identifiers unless explicitly sanitized. Logging nothing is safer than an unsafe diagnostic dump.
+- If a redaction helper already exists, test nested sensitive records, collections/maps, null values, annotated parent sections, and exception paths. Redact a sensitive parent **before traversing its children**; do not assume leaf-only annotations cover new fields. Prefer allowlists over reflective discovery of every future field.
+- Restrict diagnostic endpoints and review sanitization settings for the exact Boot version. Actuator presence neither makes dumps safe nor proves a metric is instrumented/exported.
+
+## Dependency and processor configuration
+
+Let the installed Boot parent/BOM manage compatible families. Add a direct version only when a dependency is not managed or a justified compatibility/security exception exists. Never copy a reference application's version pins as universal recommendations.
+
+For each override, document the advisory/reason, managed baseline, affected artifact family, compatibility verification, and **removal criterion** (parent manages a patched compatible version). Re-evaluate on every parent upgrade: an old override can downgrade a newly patched BOM. Verify the effective dependency tree, not comments claiming a version is current.
+
+Configure annotation processing explicitly, particularly on JDK 23+. Keep MapStruct API/processor and Lombok dependency/processor versions aligned with each other and the actual JDK. Include compatible `lombok-mapstruct-binding` when MapStruct consumes Lombok-generated members. Configure both production and test compilation when needed. The fragment below uses Maven Compiler Plugin 3.x-style processor paths; preserve the build's supported configuration model.
+
+```xml
+<!-- Fragment inside the existing maven-compiler-plugin configuration.
+     Properties must resolve from this build/BOM; choose compatible versions there. -->
+<annotationProcessorPaths>
+    <path>
+        <groupId>org.mapstruct</groupId>
+        <artifactId>mapstruct-processor</artifactId>
+        <version>${org.mapstruct.version}</version>
+    </path>
+    <path>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <version>${lombok.version}</version>
+    </path>
+    <path>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok-mapstruct-binding</artifactId>
+        <version>${lombok-mapstruct-binding.version}</version>
+    </path>
+</annotationProcessorPaths>
+```
+
+Include Boot's configuration metadata processor if the project generates metadata; it is not the runtime binder or validator. Inspect plugin inheritance/execution-specific overrides before moving processor configuration. Prefer the build's established `release`/toolchain policy; do not change the declared Java version just to make the local machine compile.
+
+## Executors, scheduling, and lifecycle
+
+Every executor, scheduler, socket, subscription, and client pool needs **one owner**, a startup failure path, a rejection policy, and a shutdown contract. Inject shared resources; never shut them down from a borrower.
+
+**JDK 21+, Boot 3 / Boot 4:** exposing the actual executor as a bean lets Spring manage that resource rather than an adapter hiding it.
 
 ```java
-package com.company.project.infrastructure.beans;
-
-import com.github.benmanes.caffeine.cache.Caffeine;
-import org.springframework.cache.CacheManager;
-import org.springframework.cache.annotation.EnableCaching;
-import org.springframework.cache.caffeine.CaffeineCacheManager;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.reactive.function.client.WebClient;
-import java.util.concurrent.TimeUnit;
 
-@Configuration
-@EnableCaching
-public class ApplicationConfiguration {
+@Configuration(proxyBeanMethods = false)
+class WorkerConfiguration {
+    @Bean(name = "ioExecutor", destroyMethod = "close")
+    ExecutorService ioExecutor() {
+        return Executors.newVirtualThreadPerTaskExecutor();
+    }
+}
+```
 
-    @Bean
-    public WebClient webClient(AppConfigs appConfigs) {
-        return WebClient.builder()
-            .baseUrl(appConfigs.apiBaseUrl())
-            .defaultHeader("Content-Type", "application/json")
+This example shows **ownership, not bounded admission**. The executor creates a virtual thread per task and does not cap outstanding work. Use an existing semaphore/admission controller or bounded worker queue for finite downstream capacity, with overload behavior tested before accepting a request. Virtual threads do not make a device, database pool, memory budget, or rate limit unlimited.
+
+Spring `@Bean` defaults to inferred destruction: a public `close` or `shutdown` method may be inferred; `AutoCloseable` resources also participate. On modern JDKs `ExecutorService.close()` waits for termination and can wait indefinitely for uncooperative tasks. Do not claim every bean requires explicit `destroyMethod`, that `shutdown()` waits, or that an adapter necessarily closes its wrapped executor. A bounded shutdown needs an owner that stops admission, cancels/unblocks work, calls shutdown, awaits for a configured bound, requests interruption if needed, and reports survivors. `shutdownNow()` requests interruption; it cannot force arbitrary code to stop. Suppress inferred destruction (`destroyMethod = ""`) only when another explicit owner is responsible.
+
+- `@Async("ioExecutor")` requires `@EnableAsync` and an external call through the Spring proxy. Self-invocation bypasses advice. Verify executor selection and async exception handling; `void` failures need an uncaught-exception handler or another observable channel.
+- `spring.threads.virtual.enabled=true` changes supported Boot auto-configured executors/schedulers. It does not convert arbitrary executors, common-pool futures, manually created threads, or every library callback into virtual threads. Inspect the chosen bean and actual worker threads.
+- Use `@EnableScheduling` for annotation scheduling. A `fixedDelay` method that dispatches work asynchronously can return before that work ends, allowing overlap. Apply an explicit single-flight/conflict rule when overlap is unsafe; do not mistake scheduling cadence for operation completion.
+- Use monotonic elapsed time for operation budgets and injected `Clock` for wall-clock expiry. Retain real task/transport cancellation handles: `CompletableFuture.cancel(true)` does not guarantee worker interruption. Follow the [deadline and cancellation contract](core-patterns.md#deadlines-cancellation-and-retries) for conflict ownership and late work.
+- Stop accepting registrations before closing factories, timers, or channels. Cancel periodic tasks, clean failed partial starts, and make repeated shutdown safe. A map of dynamically created schedulers also needs bounds and a closed-registration rule.
+
+## External clients and blocking boundaries
+
+Configure HTTP only when it is an actual installed transport. Prefer injected, managed `RestClient.Builder` (Spring Framework 6.1+), `WebClient.Builder` (when the reactive client stack is installed), or the project's existing alternative. Preserve Boot customizers, TLS, observability, serialization modules, proxy settings, and pool ownership. Do not add WebFlux just to copy a sample.
+
+**Spring Framework 6.1+; Boot 3.2+ / Boot 4, blocking client example:** the JDK request factory makes the timeout choices visible without assuming Reactor Netty.
+
+```java
+import java.net.URI;
+import java.net.http.HttpClient;
+import org.springframework.context.annotation.Bean;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.web.client.RestClient;
+
+// Methods in the application's existing @Configuration class; JDK 21+.
+@Bean(destroyMethod = "close")
+HttpClient upstreamHttpClient(TransportProperties properties) {
+    return HttpClient.newBuilder()
+            .connectTimeout(properties.client().connectTimeout())
             .build();
-    }
+}
 
-    @Bean
-    public CacheManager cacheManager(AppConfigs appConfigs) {
-        CaffeineCacheManager cacheManager = new CaffeineCacheManager("radios", "links");
-        cacheManager.setCaffeine(Caffeine.newBuilder()
-            .maximumSize(appConfigs.cacheSize())
-            .expireAfterWrite(appConfigs.cacheTtlMinutes(), TimeUnit.MINUTES)
-            .recordStats());
-        return cacheManager;
-    }
+@Bean
+RestClient upstreamClient(RestClient.Builder builder,
+                          TransportProperties properties,
+                          HttpClient upstreamHttpClient, URI upstreamBaseUri) {
+    var requests = new JdkClientHttpRequestFactory(upstreamHttpClient);
+    requests.setReadTimeout(properties.client().readTimeout());
+    return builder.baseUrl(upstreamBaseUri.toString()).requestFactory(requests).build();
 }
 ```
 
-### Conditional Bean Configuration
+`upstreamBaseUri` represents a separately validated bean from deployment configuration, not an automatically provided Boot bean. Qualify the client/URI injections if the application has several candidates. When replacing an auto-configured request factory, deliberately preserve required TLS/proxy/observation behavior. The JDK client's `close()` is owned by Spring here, but can wait for outstanding work; use the bounded lifecycle policy described above if shutdown must have a hard operational bound.
 
-```java
-@Configuration
-public class ExternalClientConfiguration {
+Connect timeout, pool-acquisition timeout, response/read timeout, and the operation's overall deadline are different limits. Verify semantics for the selected connector: a read timeout is not necessarily a full-response/body deadline. Bound response bodies and error bodies. Configure retry only for classified transient failures within the same overall budget; require idempotency or a deduplication key before retrying commands whose delivery is uncertain. An ACK, transport success, and confirmed observed state are different events.
 
-    @Bean
-    @ConditionalOnProperty(name = "app.external.enabled", havingValue = "true")
-    public ExternalRadioClient externalRadioClient(AppConfigs appConfigs) {
-        return new ExternalRadioClient(appConfigs);
-    }
+Never call `.block()`, `Future.get()`, or another blocking client on Reactor event-loop threads. A servlet/virtual worker can block within a defined budget; a reactive pipeline should compose non-blocking operations. If an installed blocking API must enter a reactive path, isolate the boundary on the project's bounded blocking scheduler with explicit capacity/deadline behavior. Preserve existing `RestTemplate` code when appropriate; its builder APIs and deprecations vary by Boot version, so do not paste obsolete setters as a universal migration.
 
-    @Bean
-    @ConditionalOnMissingBean(ExternalRadioClient.class)
-    public ExternalRadioClient mockExternalRadioClient() {
-        return new MockExternalRadioClient();
-    }
-}
-```
+## UDP transport boundaries
 
-### Profile-Specific Beans
+Keep generic datagram transport separate from domain parsing. Transport owns channel lifecycle, bounded receive/dispatch, source metadata, timestamps, and overload behavior; the protocol handler owns framing, declared lengths, versions/opcodes, encoding, and domain validation. Do not embed one application's wire constants in reusable infrastructure.
 
-```java
-@Configuration
-public class DataSourceConfiguration {
+- Copy the received bytes before reusing a buffer or handing work to another thread. Honor offset/length; never parse unused backing-array bytes. Read-only wrappers do not make shared mutable backing storage safe.
+- Detect possible truncation. For a protocol limit of N bytes, a buffer of N+1 can detect oversize messages up to the API's truncation behavior; reject anything above N. A buffer filled exactly to capacity cannot generally distinguish a valid exact-size datagram from a truncated larger one. Define and test the policy rather than silently accepting it.
+- Bound parser inputs, handler concurrency, and queue depth. Define drop/reject/coalesce policy and instrument it. Blocking the receive loop or using caller-runs on saturation may merely shift drops into the kernel; never claim lossless UDP.
+- Malformed datagrams must not terminate the receiver or poison registry state. Validate sender/interface expectations without treating source address as authentication. Rate-limit payload/error logging and redact sensitive content.
+- On multi-channel startup failure, close channels already opened, cancel started loops, and roll back registrations. If executor submission fails after setting `running`, restore state. Make the owner responsible for unblock/close and a bounded join on stop.
+- Distinguish explicit restart from automatic recovery. Test loopback receipt, malformed/truncated packets, handler failure, saturation/drop policy, stop while idle/in flight, partial-start failure, and the chosen restart policy. Never promise automatic recovery just because a loop catches an exception.
 
-    @Bean
-    @Profile("dev")
-    public DataSource devDataSource() {
-        return DataSourceBuilder.create()
-            .url("jdbc:h2:mem:testdb")
-            .username("sa")
-            .password("")
-            .build();
-    }
+## Operational verification
 
-    @Bean
-    @Profile("prod")
-    public DataSource prodDataSource(DatabaseConfiguration dbConfig) {
-        return DataSourceBuilder.create()
-            .url(dbConfig.url())
-            .username(dbConfig.username())
-            .password(dbConfig.password())
-            .build();
-    }
-}
-```
+Expose only implemented observations: admitted/rejected work, in-flight operations, queue depth, deadline/late-worker counts, retries by outcome, dropped datagrams, active sessions/subscriptions, and shutdown survivors. Use bounded-cardinality labels; device/client IDs are usually logs/traces rather than metric tags. Adding Actuator does not create these custom measurements or prove a registry/exporter is connected.
 
----
-
-## Profile-Specific Configuration
-
-### Application Profiles
-
-**application.yml** (base configuration):
-```yaml
-spring:
-  application:
-    name: radio-backend
-
-app:
-  configs:
-    http-timeout-ms: 5000
-    cache-size: 1000
-
-logging:
-  level:
-    root: INFO
-```
-
-**application-dev.yml** (development profile):
-```yaml
-spring:
-  h2:
-    console:
-      enabled: true
-
-app:
-  configs:
-    http-timeout-ms: 10000
-    cache-size: 100
-
-logging:
-  level:
-    root: DEBUG
-    com.company.project: DEBUG
-```
-
-**application-prod.yml** (production profile):
-```yaml
-spring:
-  datasource:
-    url: jdbc:postgresql://localhost:5432/radiodb
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
-
-app:
-  configs:
-    http-timeout-ms: 3000
-    cache-size: 10000
-
-logging:
-  level:
-    root: WARN
-    com.company.project: INFO
-```
-
-### Activating Profiles
-
-**Command line:**
-```bash
-java -jar app.jar --spring.profiles.active=prod
-```
-
-**Environment variable:**
-```bash
-export SPRING_PROFILES_ACTIVE=prod
-java -jar app.jar
-```
-
-**application.yml:**
-```yaml
-spring:
-  profiles:
-    active: dev
-```
-
-### Profile-Specific Components
-
-```java
-@Service
-@Profile("dev")
-@Slf4j
-public class MockRadioClient implements RadioClient {
-    @Override
-    public void syncRadio(Radio radio) {
-        log.info("Mock: Syncing radio {}", radio.getId());
-        // Mock implementation for development
-    }
-}
-
-@Service
-@Profile("prod")
-@RequiredArgsConstructor
-@Slf4j
-public class RestRadioClient implements RadioClient {
-    private final WebClient webClient;
-    private final AppConfigs appConfigs;
-
-    @Override
-    public void syncRadio(Radio radio) {
-        log.info("REST: Syncing radio {}", radio.getId());
-        // Real implementation for production
-        webClient.post()
-            .uri(appConfigs.apiUrl() + "/radios")
-            .bodyValue(radio)
-            .retrieve()
-            .bodyToMono(Void.class)
-            .block();
-    }
-}
-```
-
----
-
-## Virtual Threads Configuration
-
-### Enable Virtual Threads
-
-**application.yml:**
-```yaml
-spring:
-  threads:
-    virtual:
-      enabled: true
-```
-
-### Custom Virtual Thread Executor
-
-```java
-@Configuration
-public class VirtualThreadConfiguration {
-
-    @Bean
-    public AsyncTaskExecutor applicationTaskExecutor() {
-        TaskExecutorAdapter adapter = new TaskExecutorAdapter(
-            Executors.newVirtualThreadPerTaskExecutor()
-        );
-        adapter.setTaskDecorator(runnable -> {
-            // Add task decoration if needed
-            return runnable;
-        });
-        return adapter;
-    }
-}
-```
-
-### Using Virtual Threads
-
-```java
-@Service
-@RequiredArgsConstructor
-@Slf4j
-public class RadioService {
-    private final RadioRepository radioRepository;
-    private final ExternalRadioClient externalClient;
-
-    @Async
-    public CompletableFuture<Void> syncRadioAsync(String radioId) {
-        log.info("Syncing radio {} on virtual thread", radioId);
-        Radio radio = radioRepository.findById(radioId).orElseThrow();
-        externalClient.syncRadio(radio);
-        return CompletableFuture.completedFuture(null);
-    }
-}
-```
-
----
-
-## External Client Configuration
-
-### WebClient Configuration
-
-```java
-@Configuration
-public class WebClientConfiguration {
-
-    @Bean
-    public WebClient radioWebClient(AppConfigs appConfigs) {
-        return WebClient.builder()
-            .baseUrl(appConfigs.radioApiUrl())
-            .defaultHeader("Content-Type", "application/json")
-            .defaultHeader("Accept", "application/json")
-            .clientConnector(new ReactorClientHttpConnector(
-                HttpClient.create()
-                    .responseTimeout(Duration.ofMillis(appConfigs.httpTimeoutMs()))
-            ))
-            .filter(loggingFilter())
-            .build();
-    }
-
-    private ExchangeFilterFunction loggingFilter() {
-        return ExchangeFilterFunction.ofRequestProcessor(clientRequest -> {
-            log.info("Request: {} {}", clientRequest.method(), clientRequest.url());
-            return Mono.just(clientRequest);
-        });
-    }
-}
-```
-
-### RestTemplate Configuration (Legacy)
-
-```java
-@Configuration
-public class RestTemplateConfiguration {
-
-    @Bean
-    public RestTemplate restTemplate(RestTemplateBuilder builder, AppConfigs appConfigs) {
-        return builder
-            .setConnectTimeout(Duration.ofMillis(appConfigs.httpTimeoutMs()))
-            .setReadTimeout(Duration.ofMillis(appConfigs.httpTimeoutMs()))
-            .build();
-    }
-}
-```
-
----
-
-## Best Practices
-
-### 1. Use Records for Configuration
-
-```java
-// GOOD: Record for immutable configuration
-@ConfigurationProperties(prefix = "app")
-public record AppConfig(
-    String apiUrl,
-    int timeout
-) {}
-
-// BAD: Class with mutable fields
-@ConfigurationProperties(prefix = "app")
-@Data
-public class AppConfig {
-    private String apiUrl;
-    private int timeout;
-}
-```
-
-### 2. Validate Configuration
-
-```java
-// GOOD: Validate configuration
-@ConfigurationProperties(prefix = "app")
-@Validated
-public record AppConfig(
-    @NotBlank(message = "API URL is required")
-    String apiUrl,
-
-    @Min(1000)
-    @Max(60000)
-    int timeout
-) {}
-
-// BAD: No validation
-@ConfigurationProperties(prefix = "app")
-public record AppConfig(String apiUrl, int timeout) {}
-```
-
-### 3. Use Default Values
-
-```java
-// GOOD: Default values
-@ConfigurationProperties(prefix = "app")
-public record AppConfig(
-    @DefaultValue("http://localhost:8080")
-    String apiUrl,
-
-    @DefaultValue("5000")
-    int timeout
-) {}
-
-// BAD: No defaults - null if not configured
-@ConfigurationProperties(prefix = "app")
-public record AppConfig(String apiUrl, int timeout) {}
-```
-
-### 4. Group Related Configuration
-
-```java
-// GOOD: Grouped configuration
-@ConfigurationProperties(prefix = "app")
-public record AppConfiguration(
-    Server server,
-    Database database,
-    Cache cache
-) {
-    public record Server(int port, boolean enableVirtualThreads) {}
-    public record Database(String url, String username, String password) {}
-    public record Cache(int maxSize, int ttlMinutes) {}
-}
-
-// BAD: Flat configuration
-@ConfigurationProperties(prefix = "app")
-public record AppConfiguration(
-    int serverPort,
-    boolean serverEnableVirtualThreads,
-    String databaseUrl,
-    String databaseUsername,
-    String databasePassword,
-    int cacheMaxSize,
-    int cacheTtlMinutes
-) {}
-```
-
-### 5. Use Environment Variables for Secrets
-
-```yaml
-# GOOD: Environment variables for secrets
-spring:
-  datasource:
-    url: jdbc:postgresql://localhost:5432/db
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
-
-# BAD: Hardcoded secrets
-spring:
-  datasource:
-    url: jdbc:postgresql://localhost:5432/db
-    username: admin
-    password: secret123
-```
-
-### 6. Log Configuration on Startup
-
-```java
-// GOOD: Log configuration
-@ConfigurationProperties(prefix = "app")
-public record AppConfig(String apiUrl, int timeout) {
-    @PostConstruct
-    public void init() {
-        log.info("Loaded configuration: apiUrl={}, timeout={}ms", apiUrl, timeout);
-    }
-}
-
-// BAD: Silent configuration
-@ConfigurationProperties(prefix = "app")
-public record AppConfig(String apiUrl, int timeout) {}
-```
-
----
-
-## Common Pitfalls
-
-### 1. Missing @EnableConfigurationProperties
-
-```java
-// BAD: Configuration not enabled
-@SpringBootApplication
-public class Application {
-    public static void main(String[] args) {
-        SpringApplication.run(Application.class, args);
-    }
-}
-
-// AppConfigs will not be loaded!
-
-// GOOD: Enable configuration properties
-@SpringBootApplication
-@EnableConfigurationProperties(AppConfigs.class)
-public class Application {
-    public static void main(String[] args) {
-        SpringApplication.run(Application.class, args);
-    }
-}
-```
-
-### 2. Using @Component Instead of @ConfigurationProperties
-
-```java
-// BAD: Using @Component
-@Component
-public record AppConfig(String apiUrl, int timeout) {}
-// Values won't be injected from application.yml
-
-// GOOD: Use @ConfigurationProperties
-@ConfigurationProperties(prefix = "app")
-public record AppConfig(String apiUrl, int timeout) {}
-```
-
-### 3. Wrong Property Names
-
-```java
-// Configuration class
-@ConfigurationProperties(prefix = "app")
-public record AppConfig(
-    String apiUrl,  // Maps to app.api-url or app.apiUrl
-    int timeoutMs   // Maps to app.timeout-ms or app.timeoutMs
-) {}
-
-// BAD: Wrong YAML property names
-app:
-  api_url: http://localhost  # Wrong: uses underscore
-  timeout: 5000              # Wrong: missing -ms suffix
-
-// GOOD: Correct YAML property names
-app:
-  api-url: http://localhost  # Correct: kebab-case
-  timeout-ms: 5000           # Correct: matches field name
-```
-
-### 4. Not Using Profiles
-
-```java
-// BAD: Same configuration for all environments
-app:
-  api-url: http://localhost:8080
-  timeout-ms: 5000
-
-// GOOD: Profile-specific configuration
-# application.yml
-app:
-  timeout-ms: 5000
-
-# application-dev.yml
-app:
-  api-url: http://localhost:8080
-
-# application-prod.yml
-app:
-  api-url: https://api.production.com
-```
-
-### 5. Hardcoding Configuration in Code
-
-```java
-// BAD: Hardcoded configuration
-@Service
-public class RadioClient {
-    private static final String API_URL = "http://localhost:8080";
-    private static final int TIMEOUT = 5000;
-
-    public void syncRadio(Radio radio) {
-        // Uses hardcoded values
-    }
-}
-
-// GOOD: Inject configuration
-@Service
-@RequiredArgsConstructor
-public class RadioClient {
-    private final AppConfigs appConfigs;
-
-    public void syncRadio(Radio radio) {
-        String apiUrl = appConfigs.apiUrl();
-        int timeout = appConfigs.timeout();
-    }
-}
-```
-
-### 6. Mutable Configuration Records
-
-```java
-// BAD: Trying to make record mutable
-@ConfigurationProperties(prefix = "app")
-public record AppConfig(String apiUrl, int timeout) {
-    public void setApiUrl(String apiUrl) {
-        // Won't work - records are immutable!
-    }
-}
-
-// GOOD: Use immutable records
-@ConfigurationProperties(prefix = "app")
-public record AppConfig(String apiUrl, int timeout) {
-    // No setters - immutable by design
-}
-```
-
----
-
-## Summary
-
-Configuration management in Spring Boot follows these key patterns:
-
-1. **Use records with `@ConfigurationProperties`** for immutable configuration
-2. **Enable with `@EnableConfigurationProperties`** in main application class
-3. **Validate configuration** with `@Validated` and Jakarta Validation
-4. **Use default values** with `@DefaultValue` annotation
-5. **Group related configuration** with nested records
-6. **Profile-specific configuration** with application-{profile}.yml files
-7. **Environment variables for secrets** (never hardcode)
-8. **Enable virtual threads** in application.yml for better scalability
-9. **Configure external clients** (WebClient) as beans
-10. **Log configuration on startup** with `@PostConstruct`
-
-Follow these patterns for clean, maintainable application configuration.
+Use the repository wrapper to inspect effective dependencies and compile both production and tests; run binding/lifecycle tests before the broader suite. See [testing.md](testing.md) for versioned test imports, safe commands, and truthful verification reporting. An inspection-only reference is not the test target unless executing it is also within the authorized scope.

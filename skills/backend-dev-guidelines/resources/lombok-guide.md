@@ -1,866 +1,194 @@
 # Lombok Guide
 
-Comprehensive reference for Lombok annotations and best practices in Spring Boot applications.
-
----
+Use Lombok to remove mechanical code without hiding ownership, identity, validation, or lifecycle decisions. Keep existing project conventions, but do not copy annotation bundles merely because they appear nearby.
 
 ## Table of Contents
 
-1. [Common Annotations](#common-annotations)
-2. [Data Annotations](#data-annotations)
-3. [Constructor Annotations](#constructor-annotations)
-4. [Builder Pattern](#builder-pattern)
-5. [Logging](#logging)
-6. [Best Practices](#best-practices)
-7. [Common Pitfalls](#common-pitfalls)
+- [Choose the type before its annotations](#choose-the-type-before-its-annotations)
+- [Constructor injection](#constructor-injection)
+- [Getters, setters, Data, and Value](#getters-setters-data-and-value)
+- [Secret-safe string representations](#secret-safe-string-representations)
+- [Equality and hash codes](#equality-and-hash-codes)
+- [Builders and defaults](#builders-and-defaults)
+- [JPA-specific cautions](#jpa-specific-cautions)
+- [Build integration and verification](#build-integration-and-verification)
 
----
+## Choose the type before its annotations
 
-## Common Annotations
+| Need | Starting point |
+|---|---|
+| Snapshot, value object, request/response DTO, projection | Record, including for REST |
+| Controlled mutable state or domain lifecycle | Class with named operations and selective accessors |
+| Spring service/controller/repository | Constructor injection; no data/equality bundle |
+| Framework-constrained bean/entity | Class satisfying the verified framework contract |
 
-### @Data
+Records already generate a constructor, accessors, equality/hash code, and `toString`; they do not need Lombok. They are shallowly immutable, so collection/array ownership still needs attention. Their generated `toString` can expose secrets just as a generated class method can. See [dto-and-mapping.md](dto-and-mapping.md).
 
-Generates getters, setters, `toString`, `equals`, and `hashCode`.
+`@Value` remains useful in an existing immutable class/bean-style API that cannot be changed compatibly to record accessors or semantics. It is not deep immutability and is not automatically wrong. Avoid migrating public types solely to reduce annotation count.
 
-```java
-import lombok.Data;
+## Constructor injection
 
-@Data
-public class Link {
-    private String id;
-    private String name;
-    private LinkStatus status;
-    private String description;
-}
+`@RequiredArgsConstructor` generates parameters for **uninitialized final fields** and uninitialized fields annotated with Lombok `@NonNull`. Already initialized final fields are owned state, not constructor dependencies.
 
-// Equivalent to:
-public class Link {
-    private String id;
-    private String name;
-    private LinkStatus status;
-    private String description;
+One constructor is sufficient for Spring injection without `@Autowired`. Final references do not make a service or its dependencies thread-safe. Lombok does not own or close resources initialized in fields; lifecycle management is still explicit.
 
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    // ... all getters/setters
-
-    @Override
-    public String toString() { /* ... */ }
-
-    @Override
-    public boolean equals(Object o) { /* ... */ }
-
-    @Override
-    public int hashCode() { /* ... */ }
-}
-```
-
-**Use for**: Mutable domain models, DTOs
-
-### @Value
-
-Creates immutable class with final fields, getters, `toString`, `equals`, and `hashCode`.
+Use a manual constructor when it makes wiring clearer, especially for qualifiers:
 
 ```java
-import lombok.Value;
+import java.util.concurrent.Executor;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Service;
 
-@Value
-public class LinkInfo {
-    String id;
-    String name;
-    LinkStatus status;
-}
+@Service
+public class DeviceWorkService {
+    private final Executor executor;
 
-// Equivalent to:
-public final class LinkInfo {
-    private final String id;
-    private final String name;
-    private final LinkStatus status;
-
-    public LinkInfo(String id, String name, LinkStatus status) {
-        this.id = id;
-        this.name = name;
-        this.status = status;
+    public DeviceWorkService(@Qualifier("deviceExecutor") Executor executor) {
+        this.executor = executor;
     }
-
-    public String getId() { return id; }
-    public String getName() { return name; }
-    public LinkStatus getStatus() { return status; }
-
-    @Override
-    public String toString() { /* ... */ }
-
-    @Override
-    public boolean equals(Object o) { /* ... */ }
-
-    @Override
-    public int hashCode() { /* ... */ }
 }
 ```
 
-**Use for**: Immutable value objects (but prefer Java records)
+The example assumes an existing bean named `deviceExecutor`. Do not assume field-level `@Qualifier`, `@Value`, or other framework annotations are copied to Lombok-generated parameters; inspect generation and repository `lombok.config` if relying on copyable annotations. A short manual constructor is often safer than adding global Lombok configuration for one injection point.
 
-### @Getter and @Setter
+`@AllArgsConstructor` includes non-static fields beyond required collaborators, including mutable runtime/configuration state where applicable. It is not the default solution for a service with non-final fields. Adding a flag, scalar configuration value, or registry can unexpectedly change Spring's constructor contract.
 
-Generate getters and/or setters.
+Use `@NoArgsConstructor` only when an actual framework/API needs it. `force = true` initializes final fields to JVM defaults and can bypass required invariants; do not use it to silence construction errors. Typed configuration binding belongs in [configuration.md](configuration.md), not an all-args service constructor.
+
+## Getters, setters, Data, and Value
+
+Prefer narrow annotations matching the public API:
+
+- `@Getter` can expose a read-only reference, but it does not copy a collection or prevent mutation through that reference.
+- `@Setter` on a mutable field makes an unconstrained write path. Do not generate it for identity, ownership, permissions, confirmed state, or fields whose changes must satisfy domain rules.
+- `@Data` bundles getters, setters for non-final fields, `toString`, equality/hash code, and required-constructor behavior. It is not simply a shorter `@Getter`.
+- `@Value` normally produces a final class with private final fields, getters, an all-args constructor, equality/hash code, and `toString`. Mutable components remain mutable.
+- Lombok `@NonNull` supplies generated null checks where supported, not Bean Validation, authorization, non-blank checks, or domain validation.
+
+`@Data` can fit a deliberately simple mutable carrier after reviewing every generated method, but is not a default for DTOs, mutable aggregates, session objects, credentials, or JPA entities. Explicit setters and `@Data` can undermine a carefully named transition method by allowing callers to bypass it.
+
+For defensive-copy getters or invariant-checking constructors, handwritten code is appropriate. Lombok generally skips generation when a matching member already exists, so review method/constructor interactions instead of assuming annotations add everything independently.
+
+## Secret-safe string representations
+
+Prefer an allowlist over an exclusion list for objects that may acquire sensitive fields later:
 
 ```java
 import lombok.Getter;
-import lombok.Setter;
-
-public class Radio {
-    @Getter @Setter
-    private String id;
-
-    @Getter @Setter
-    private String name;
-
-    @Getter
-    private final LocalDateTime createdAt = LocalDateTime.now();
-
-    // No setter for createdAt - read-only
-}
-```
-
-**Use for**: Fine-grained control over getters/setters
-
-### @ToString
-
-Generates `toString()` method.
-
-```java
+import lombok.RequiredArgsConstructor;
 import lombok.ToString;
 
-@ToString
-public class Link {
-    private String id;
-    private String name;
-    private LinkStatus status;
-}
-
-// Exclude fields
-@ToString(exclude = {"password", "secretKey"})
-public class User {
-    private String username;
-    private String password;
-    private String secretKey;
-}
-
-// Include only specific fields
+@Getter
+@RequiredArgsConstructor
 @ToString(onlyExplicitlyIncluded = true)
-public class Radio {
+public final class CredentialMetadata {
     @ToString.Include
-    private String id;
+    private final String credentialId;
 
-    @ToString.Include
-    private String name;
-
-    private String internalData;  // Not included in toString
+    private final String token;
 }
 ```
 
-### @EqualsAndHashCode
+The identifier must itself be safe to log under the application's policy. `@ToString.Exclude` is useful when an existing broad representation must omit a known field, but newly added secrets are safer under an inclusion policy. Neither annotation prevents explicit `getToken()` logging, JSON serialization, exception-message leakage, heap retention, or debugger exposure.
 
-Generates `equals()` and `hashCode()` methods.
+Avoid including relationships, streams, large collections, payload bytes, or fields whose getters can trigger I/O. Generated `toString` may call getters; inspect the configuration/generated code, or use `doNotUseGetters = true` where appropriate. That option is not a general solution for entity proxies or sensitive output.
 
-```java
-import lombok.EqualsAndHashCode;
+Do not log an entire configuration object, request, or record merely because its generated representation is convenient. Use safe structured fields. Secret-bearing records need an explicit redacted `toString` or a different representation policy.
 
-@EqualsAndHashCode
-public class Link {
-    private String id;
-    private String name;
-    private LinkStatus status;
-}
+## Equality and hash codes
 
-// Only use id for equality
-@EqualsAndHashCode(onlyExplicitlyIncluded = true)
-public class Radio {
-    @EqualsAndHashCode.Include
-    private String id;
+Decide whether a type has **value equality**, **stable identity**, or ordinary object identity before generating methods.
 
-    private String name;
-    private RadioStatus status;
-}
-```
+- Record/value equality suits immutable values when every component is intentionally part of equality.
+- A mutable field in `equals`/`hashCode` can change set/map membership after insertion. A thread-safe collection does not fix that.
+- `@EqualsAndHashCode(onlyExplicitlyIncluded = true)` can express a stable identity field, but only when that field is non-null, unique in the relevant scope, and stable throughout collection membership.
+- Two new entities with null generated IDs must not accidentally compare equal just because only ID is included.
+- Associations in equality can recurse, traverse huge graphs, or initialize lazy state. Avoid them unless explicitly part of a bounded value model.
+- For inheritance, make superclass participation (`callSuper`) deliberate and preserve symmetry across subclasses/proxies. Do not silence Lombok warnings without understanding the hierarchy.
 
----
+Do not generate equality for Spring services or operation/lock ownership tokens just to make tests easier. Where cleanup must identify the exact execution instance, value equality can remove the wrong run. Reference identity or an explicit unique token is often the correct contract.
 
-## Data Annotations
+For unusual equality—especially JPA identity and proxies—write and test the implementation rather than forcing it into an annotation. See the [JPA cautions](#jpa-specific-cautions) below.
 
-### @Data for Domain Models
+## Builders and defaults
+
+A builder improves readability for a real set of optional parameters; it does not ensure a valid object. A small record's canonical constructor is often clearer. Use a validating constructor/factory as the single construction boundary when invariants matter.
+
+Complete example showing a builder on a validating constructor:
 
 ```java
-import lombok.Data;
+import java.time.Duration;
+import java.util.Objects;
 import lombok.Builder;
-import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
+import lombok.Getter;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class Radio {
-    private String id;
-    private String name;
-    private RadioType type;
-    private RadioStatus status;
-    private List<Link> links;
-}
-```
+@Getter
+public final class RetrySettings {
+    private final int maxAttempts;
+    private final Duration delay;
 
-**Generated methods:**
-- All getters and setters
-- `toString()`
-- `equals()` and `hashCode()`
-- Constructor (from `@NoArgsConstructor` and `@AllArgsConstructor`)
-- Builder (from `@Builder`)
+    @Builder
+    public RetrySettings(int maxAttempts, Duration delay) {
+        if (hasNoAttempts(maxAttempts)) {
+            throw new IllegalArgumentException("At least one attempt is required");
+        }
+        Objects.requireNonNull(delay, "delay");
+        if (delay.isNegative()) {
+            throw new IllegalArgumentException("Delay must not be negative");
+        }
+        this.maxAttempts = maxAttempts;
+        this.delay = delay;
+    }
 
-### @Data for DTOs
-
-```java
-import lombok.Data;
-import com.fasterxml.jackson.annotation.JsonProperty;
-
-@Data
-public class RadioDto {
-    private String id;
-    private String name;
-
-    @JsonProperty("radio_type")
-    private String type;
-
-    @JsonProperty("radio_status")
-    private String status;
-}
-```
-
----
-
-## Constructor Annotations
-
-### @NoArgsConstructor
-
-Generates no-argument constructor.
-
-```java
-import lombok.NoArgsConstructor;
-
-@NoArgsConstructor
-public class Radio {
-    private String id;
-    private String name;
-}
-
-// Equivalent to:
-public class Radio {
-    public Radio() {
+    private static boolean hasNoAttempts(int maxAttempts) {
+        return maxAttempts < 1;
     }
 }
 ```
 
-**Use for**: JPA entities, DTOs that need default constructor
+The example permits zero delay; actual retry safety and deadlines remain a use-case policy, not a builder feature. See [core-patterns.md](core-patterns.md).
 
-### @AllArgsConstructor
+### Defaults and collections
 
-Generates constructor with parameter for every field.
+- With a class-level builder, an ordinary field initializer is generally not the builder default; use `@Builder.Default` when that behavior is intended.
+- A builder default applies when the builder field is **unset**, not when a caller explicitly supplies null. Validate null separately.
+- `@Singular` generates collection accumulation methods and an unmodifiable built collection for supported collection types. It does not deep-copy mutable elements or make the whole object immutable.
+- Do not combine `@Singular` and `@Builder.Default` on the same field. Choose accumulation semantics or an explicitly handled default.
+- `toBuilder = true` creates a builder seeded from the existing object; it is not a general deep-copy operation. Define collection/element ownership explicitly.
+- A getter generated over a normal builder-supplied list exposes that same list unless construction/getter code copies it.
 
-```java
-import lombok.AllArgsConstructor;
+### Constructor interactions
 
-@AllArgsConstructor
-public class Link {
-    private String id;
-    private String name;
-    private LinkStatus status;
-}
+Class-level `@Builder` normally relies on an all-args construction path and interacts with explicit or generated constructors. Combining it with `@NoArgsConstructor`, `@AllArgsConstructor`, or `@Value` changes generation/accessibility; do not stack all four to resolve errors without reviewing the resulting API.
 
-// Equivalent to:
-public class Link {
-    public Link(String id, String name, LinkStatus status) {
-        this.id = id;
-        this.name = name;
-        this.status = status;
-    }
-}
-```
+Prefer placing `@Builder` on the intended constructor or factory when custom construction exists. Add no-argument/all-argument constructors only for a documented need. Framework-required construction should not become an alternative invalid public construction path.
 
-**Use for**: Value objects, immutable classes
+Use `@Jacksonized` only if builder-based Jackson deserialization is actually required and supported by the resolved Lombok/Jackson versions. It is unnecessary for ordinary record deserialization. Boot 4/Jackson 3 support must be verified against the actual Lombok release, not assumed from Boot 3 examples.
 
-### @RequiredArgsConstructor
+## JPA-specific cautions
 
-Generates constructor for final and `@NonNull` fields only.
+This section applies only to actual JPA entities; a SQL dependency does not establish JPA use.
 
-```java
-import lombok.RequiredArgsConstructor;
-import lombok.NonNull;
+Ordinary JPA entity design needs an accessible public/protected no-argument constructor and provider-compatible class/accessor behavior. A targeted `@NoArgsConstructor(access = AccessLevel.PROTECTED)` can supply that requirement, provided other construction paths preserve invariants. Records are suitable for DTOs/projections, not ordinary entities.
 
-@RequiredArgsConstructor
-public class RadioService {
-    private final RadioRepository radioRepository;
-    private final RadioClient radioClient;
+Avoid `@Data` on entities. Merely excluding relationships from `toString` and equality does not resolve:
 
-    @NonNull
-    private Logger logger;
+- Generated-ID equality before and after persistence.
+- Proxy/type equality and lazy initialization.
+- Setter access to identity and controlled state.
+- Mutable hash codes while an entity belongs to a set or map.
+- Association ownership and bidirectional relationship maintenance.
 
-    private String optionalField;  // Not in constructor
-}
+Prefer explicit identity/equality behavior and targeted accessors. Avoid final entity classes/methods when the provider relies on subclass proxies; verify the provider's actual constraints rather than claiming one annotation set works everywhere. Test equality across new, persisted, detached, and proxied states, including collection membership and loading behavior.
 
-// Equivalent to:
-public class RadioService {
-    private final RadioRepository radioRepository;
-    private final RadioClient radioClient;
-    private Logger logger;
-    private String optionalField;
+Do not add an entity-wide builder that allows arbitrary IDs, version fields, or relationships merely for test fixture convenience. Build valid domain state through the same controlled construction paths used by production code.
 
-    public RadioService(RadioRepository radioRepository, RadioClient radioClient, Logger logger) {
-        this.radioRepository = radioRepository;
-        this.radioClient = radioClient;
-        this.logger = logger;
-    }
-}
-```
+## Build integration and verification
 
-**Use for**: Dependency injection in Spring components
+Use the [shared processor setup](configuration.md#dependency-and-processor-configuration). Inspect repository `lombok.config` and generated/delomboked code when constructor signatures, annotation copying, or method generation are unclear.
 
----
+A clean command-line compile catches stale generated-source/IDE assumptions. Focused tests should cover the semantics generation cannot prove: builder validation/defaults, null handling, defensive copying, equality stability, secret-safe output, qualifier wiring, and any JPA lifecycle behavior actually in use. See [testing.md](testing.md).
 
-## Builder Pattern
+**Boot 3 / Boot 4 compatibility:** most core Lombok annotations are independent of Spring Boot, but constructor wiring, serializer adapters, entity providers, processor versions, and JDK support depend on the resolved stack. Do not infer compatibility from an annotation compiling in an older project.
 
-### Basic Builder
-
-```java
-import lombok.Builder;
-
-@Builder
-public class Radio {
-    private String id;
-    private String name;
-    private RadioType type;
-    private RadioStatus status;
-}
-
-// Usage:
-Radio radio = Radio.builder()
-    .id("radio-123")
-    .name("Test Radio")
-    .type(RadioType.TYPE_A)
-    .status(RadioStatus.ACTIVE)
-    .build();
-```
-
-### Builder with Default Values
-
-```java
-import lombok.Builder;
-
-@Builder
-public class Radio {
-    private String id;
-    private String name;
-    private RadioType type;
-
-    @Builder.Default
-    private RadioStatus status = RadioStatus.INACTIVE;
-
-    @Builder.Default
-    private List<Link> links = new ArrayList<>();
-}
-
-// Usage:
-Radio radio = Radio.builder()
-    .name("Test Radio")
-    .type(RadioType.TYPE_A)
-    .build();  // status = INACTIVE, links = empty list
-```
-
-### Builder with @Data
-
-```java
-import lombok.Data;
-import lombok.Builder;
-import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
-
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class Link {
-    private String id;
-    private String name;
-    private LinkStatus status;
-}
-
-// Can use both builder and setters:
-Link link = Link.builder()
-    .name("Link 1")
-    .status(LinkStatus.ACTIVE)
-    .build();
-
-link.setName("Updated Link");  // Setter also available
-```
-
-### Singular Collections
-
-```java
-import lombok.Builder;
-import lombok.Singular;
-
-@Builder
-public class Radio {
-    private String id;
-    private String name;
-
-    @Singular
-    private List<Link> links;
-
-    @Singular("tag")
-    private Set<String> tags;
-}
-
-// Usage:
-Radio radio = Radio.builder()
-    .name("Test Radio")
-    .link(link1)  // Add single link
-    .link(link2)  // Add another link
-    .tag("important")
-    .tag("active")
-    .build();
-```
-
----
-
-## Logging
-
-### @Slf4j
-
-Generates SLF4J logger field.
-
-```java
-import lombok.extern.slf4j.Slf4j;
-
-@Slf4j
-public class RadioService {
-    public Radio getRadio(String radioId) {
-        log.info("Fetching radio: {}", radioId);
-        log.debug("Detailed info: {}", details);
-        log.error("Error occurred", exception);
-        return radio;
-    }
-}
-
-// Equivalent to:
-public class RadioService {
-    private static final org.slf4j.Logger log =
-        org.slf4j.LoggerFactory.getLogger(RadioService.class);
-
-    public Radio getRadio(String radioId) {
-        log.info("Fetching radio: {}", radioId);
-        return radio;
-    }
-}
-```
-
-### Other Logger Annotations
-
-```java
-@Log  // java.util.logging.Logger
-@Log4j  // Log4j logger
-@Log4j2  // Log4j2 logger
-@CommonsLog  // Apache Commons Logging
-```
-
-**Use**: `@Slf4j` (most common with Spring Boot)
-
----
-
-## Best Practices
-
-### 1. Use @RequiredArgsConstructor for Dependency Injection
-
-```java
-// GOOD: Constructor injection with @RequiredArgsConstructor
-@Service
-@RequiredArgsConstructor
-public class RadioService {
-    private final RadioRepository radioRepository;
-    private final RadioClient radioClient;
-}
-
-// BAD: Field injection
-@Service
-public class RadioService {
-    @Autowired
-    private RadioRepository radioRepository;
-
-    @Autowired
-    private RadioClient radioClient;
-}
-```
-
-### 2. Combine @Data with @Builder
-
-```java
-// GOOD: Flexible with builder and setters
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class Radio {
-    private String id;
-    private String name;
-}
-
-// Can use builder:
-Radio radio = Radio.builder().name("Test").build();
-
-// Or setters:
-radio.setName("Updated");
-```
-
-### 3. Use @Slf4j for Logging
-
-```java
-// GOOD: Lombok logger
-@Service
-@Slf4j
-public class RadioService {
-    public void process() {
-        log.info("Processing...");
-    }
-}
-
-// BAD: Manual logger
-@Service
-public class RadioService {
-    private static final Logger log = LoggerFactory.getLogger(RadioService.class);
-
-    public void process() {
-        log.info("Processing...");
-    }
-}
-```
-
-### 4. Exclude Sensitive Fields from @ToString
-
-```java
-// GOOD: Exclude sensitive data
-@Data
-@ToString(exclude = {"password", "apiKey"})
-public class User {
-    private String username;
-    private String password;
-    private String apiKey;
-}
-
-// BAD: Exposing sensitive data
-@Data
-public class User {
-    private String username;
-    private String password;  // Visible in toString!
-}
-```
-
-### 5. Use @Builder.Default for Default Values
-
-```java
-// GOOD: Default values with @Builder.Default
-@Builder
-public class Radio {
-    private String name;
-
-    @Builder.Default
-    private RadioStatus status = RadioStatus.INACTIVE;
-
-    @Builder.Default
-    private List<Link> links = new ArrayList<>();
-}
-
-// BAD: Null values without defaults
-@Builder
-public class Radio {
-    private String name;
-    private RadioStatus status;  // null if not set
-    private List<Link> links;    // null if not set
-}
-```
-
-### 6. Add @NoArgsConstructor for JPA Entities
-
-```java
-// GOOD: Both constructors for JPA
-@Entity
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class RadioEntity {
-    @Id
-    private String id;
-    private String name;
-}
-
-// BAD: Missing no-args constructor (JPA requires it)
-@Entity
-@Data
-@AllArgsConstructor
-public class RadioEntity {
-    @Id
-    private String id;
-    private String name;
-}
-```
-
----
-
-## Common Pitfalls
-
-### 1. Missing @NoArgsConstructor with @Builder
-
-```java
-// BAD: Can't use builder with JPA
-@Entity
-@Data
-@Builder
-public class RadioEntity {
-    @Id
-    private String id;
-}
-
-// Error: JPA requires no-args constructor
-// Builder removes default constructor
-
-// GOOD: Add @NoArgsConstructor
-@Entity
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class RadioEntity {
-    @Id
-    private String id;
-}
-```
-
-### 2. Using @Data on Entities with Relationships
-
-```java
-// BAD: @Data with JPA relationships
-@Entity
-@Data
-public class Radio {
-    @Id
-    private String id;
-
-    @OneToMany(mappedBy = "radio")
-    private List<Link> links;
-}
-
-// toString() causes infinite loop if Link also has @Data!
-
-// GOOD: Exclude relationships from toString
-@Entity
-@Data
-@ToString(exclude = "links")
-@EqualsAndHashCode(exclude = "links")
-public class Radio {
-    @Id
-    private String id;
-
-    @OneToMany(mappedBy = "radio")
-    private List<Link> links;
-}
-```
-
-### 3. Not Using @RequiredArgsConstructor for Final Fields
-
-```java
-// BAD: Manual constructor
-@Service
-public class RadioService {
-    private final RadioRepository repository;
-    private final RadioClient client;
-
-    public RadioService(RadioRepository repository, RadioClient client) {
-        this.repository = repository;
-        this.client = client;
-    }
-}
-
-// GOOD: Use @RequiredArgsConstructor
-@Service
-@RequiredArgsConstructor
-public class RadioService {
-    private final RadioRepository repository;
-    private final RadioClient client;
-}
-```
-
-### 4. Forgetting @Slf4j
-
-```java
-// BAD: No logger annotation
-@Service
-public class RadioService {
-    public void process() {
-        // Can't log!
-    }
-}
-
-// GOOD: Add @Slf4j
-@Service
-@Slf4j
-public class RadioService {
-    public void process() {
-        log.info("Processing...");
-    }
-}
-```
-
-### 5. Using @Value Instead of Records
-
-```java
-// BAD: Using @Value (verbose)
-@Value
-public class LinkInfo {
-    String id;
-    String name;
-    LinkStatus status;
-}
-
-// GOOD: Use Java record (cleaner)
-public record LinkInfo(
-    String id,
-    String name,
-    LinkStatus status
-) {}
-```
-
-### 6. Not Excluding Lombok from Equals/HashCode
-
-```java
-// BAD: Including all fields in equals
-@Data
-public class User {
-    private String id;
-    private String username;
-    private String password;
-    private LocalDateTime lastLogin;
-}
-
-// lastLogin changes affect equals/hashCode!
-
-// GOOD: Only use id for equality
-@Data
-@EqualsAndHashCode(onlyExplicitlyIncluded = true)
-public class User {
-    @EqualsAndHashCode.Include
-    private String id;
-
-    private String username;
-    private String password;
-    private LocalDateTime lastLogin;
-}
-```
-
----
-
-## Annotation Cheatsheet
-
-| Annotation | Purpose | Use For |
-|------------|---------|---------|
-| `@Data` | Getters, setters, toString, equals, hashCode | Mutable classes |
-| `@Value` | Immutable class with getters | Value objects (prefer records) |
-| `@Getter` | Generate getters | Fine control |
-| `@Setter` | Generate setters | Fine control |
-| `@ToString` | Generate toString() | Any class |
-| `@EqualsAndHashCode` | Generate equals() and hashCode() | Any class |
-| `@NoArgsConstructor` | No-argument constructor | JPA entities, DTOs |
-| `@AllArgsConstructor` | Constructor with all fields | Value objects |
-| `@RequiredArgsConstructor` | Constructor for final/@NonNull fields | Dependency injection |
-| `@Builder` | Builder pattern | Creating objects |
-| `@Slf4j` | SLF4J logger field | Logging |
-
----
-
-## Common Combinations
-
-### Service Class
-
-```java
-@Service
-@RequiredArgsConstructor
-@Slf4j
-public class RadioService {
-    private final RadioRepository repository;
-    private final RadioClient client;
-}
-```
-
-### Domain Model
-
-```java
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class Radio {
-    private String id;
-    private String name;
-    private RadioStatus status;
-}
-```
-
-### JPA Entity
-
-```java
-@Entity
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-@ToString(exclude = "links")
-@EqualsAndHashCode(onlyExplicitlyIncluded = true)
-public class RadioEntity {
-    @Id
-    @EqualsAndHashCode.Include
-    private String id;
-
-    private String name;
-
-    @OneToMany(mappedBy = "radio")
-    private List<LinkEntity> links;
-}
-```
-
-### REST DTO
-
-```java
-@Data
-public class RadioDto {
-    private String id;
-    private String name;
-
-    @JsonProperty("radio_status")
-    private String status;
-}
-```
-
----
-
-## Summary
-
-Lombok provides powerful code generation for Java classes:
-
-1. **`@Data`**: Complete data class with getters, setters, toString, equals, hashCode
-2. **`@Builder`**: Builder pattern for object creation
-3. **`@RequiredArgsConstructor`**: Constructor injection for Spring components
-4. **`@Slf4j`**: Logging support
-5. **`@NoArgsConstructor` + `@AllArgsConstructor`**: Flexible constructor options
-6. **`@ToString(exclude)`**: Control toString output
-7. **`@EqualsAndHashCode(onlyExplicitlyIncluded)`**: Control equality logic
-
-Use Lombok to reduce boilerplate while maintaining clean, readable code. Prefer Java records over `@Value` for immutable value objects.
+`@Slf4j` only generates a logger field. Keep the project's logging facade and follow the [logging policy](exception-handling.md#logging-and-diagnostics); generated logging does not sanitize values or change when arguments are evaluated.

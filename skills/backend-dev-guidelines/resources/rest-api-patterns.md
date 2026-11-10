@@ -1,974 +1,196 @@
 # REST API Patterns
 
-Comprehensive guide to implementing REST APIs with Spring Web, including controller patterns, ResponseEntity usage, HTTP status codes, and OpenAPI documentation.
-
----
+Practical contracts for Spring MVC or WebFlux APIs. Start from the project's HTTP conventions, security policy, and error envelope, not a copied CRUD scaffold. Java fragments below require application service, DTO, mapper, and authorization implementations; they are not claims about existing endpoints.
 
 ## Table of Contents
 
-1. [REST Controller Basics](#rest-controller-basics)
-2. [HTTP Methods and Mappings](#http-methods-and-mappings)
-3. [ResponseEntity Patterns](#responseentity-patterns)
-4. [Request and Response DTOs](#request-and-response-dtos)
-5. [HTTP Status Codes](#http-status-codes)
-6. [OpenAPI Documentation](#openapi-documentation)
-7. [Error Handling](#error-handling)
-8. [Best Practices](#best-practices)
-9. [Common Pitfalls](#common-pitfalls)
+- [Discover the stack and contract](#discover-the-stack-and-contract)
+- [HTTP methods and resource semantics](#http-methods-and-resource-semantics)
+- [Thin endpoint examples](#thin-endpoint-examples)
+- [DTO and request validation](#dto-and-request-validation)
+- [PUT, PATCH, and concurrent updates](#put-patch-and-concurrent-updates)
+- [Bounded collections](#bounded-collections)
+- [Security boundaries](#security-boundaries)
+- [Clients, retries, and idempotency](#clients-retries-and-idempotency)
+- [Errors and OpenAPI](#errors-and-openapi)
+- [Verification and references](#verification-and-references)
 
----
+## Discover the stack and contract
 
-## REST Controller Basics
+Inspect the POM/Gradle build, resolved Java/Boot/Framework versions, existing controllers, message converters, security chain, service return types, and tests. Determine MVC versus WebFlux and the installed client/OpenAPI support. Do not mix blocking MVC assumptions into reactive event loops or copy Boot 3 test/configuration imports into Boot 4 without checking their locations.
 
-### Basic Controller Structure
+Follow existing resource paths, media types, JSON field naming, pagination, versioning, and compatibility policy. `/api/links` is illustrative; do not mandate `/api/v1` or introduce a second versioning scheme. When no REST implementation exists, say so and design only the requested endpoint. Neither JDBC nor OpenAPI dependencies establish an implemented API or durable operation store.
+
+## HTTP methods and resource semantics
+
+| Method/result | Contract |
+| --- | --- |
+| `GET /links/{id}` | Read without business side effects; `200` with representation, or the documented `404`/absence behavior. |
+| `GET /links` | Bounded filtered collection; an empty result is normally `200` with an empty collection. |
+| `POST /links` | Create: `201 Created` with a `Location` identifying the created resource, usually its representation. POST is not inherently idempotent. |
+| `PUT /links/{id}` | Replace the client's writable representation; idempotent semantics. `200` with representation or `204` without; `201` only if creation at that URI is supported. |
+| `PATCH /links/{id}` | Apply a documented partial-update format atomically. Not inherently idempotent; specify absence/null and retry behavior. |
+| `DELETE /links/{id}` | Remove: often `204`; `200` with a result is also valid. Repeated deletion may return `404` or `204` by contract. Idempotence concerns resulting state, not identical response status. |
+| `202 Accepted` | Admitted for later processing, not confirmed complete. Provide the designed monitoring contract; never fabricate completion. |
+| `304 Not Modified` | Conditional GET matched the validator; no response body. |
+
+Use nouns for resources and query parameters for filtering. A command that is not resource replacement can have a deliberate POST command endpoint; do not force every hardware/action workflow into fake CRUD. If a durable operation-status resource actually exists, `202` can identify it via `Location` and return its ID/state. That design needs ownership, terminal states, retention, recovery, and retry semantics. A `CompletableFuture` alone is not an operation-status resource and does not automatically imply `202`.
+
+Use `400` for malformed/binding/input validation failures under the existing policy; `401` for missing/invalid authentication with the appropriate challenge, `403` for denied access, `404` for missing resources, `409` for state conflicts, `412` for failed request preconditions, `415` for unsupported content types, and `429` for enforced quotas. Use `422` only when the API deliberately distinguishes semantic invalidity. Dependency failures may be `502`, `503`, or `504` according to actual gateway/availability/timeout semantics, not an automatic conversion of every client exception.
+
+## Thin endpoint examples
+
+Inside an application `@RestController` mapped to `/api/links`, with constructor-injected service and mapper:
 
 ```java
-import org.springframework.web.bind.annotation.*;
-import org.springframework.http.ResponseEntity;
-import org.springframework.http.HttpStatus;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
-
-@RestController
-@RequestMapping("/api/v1/radios")
-@RequiredArgsConstructor
-@Tag(name = "Radio Management", description = "APIs for managing radios")
-public class RadioRestController {
-    private final RadioService radioService;
-    private final RadioMapper mapper;
-
-    @GetMapping("/{radioId}")
-    @Operation(summary = "Get radio by ID")
-    public ResponseEntity<RadioDto> getRadio(@PathVariable String radioId) {
-        Radio radio = radioService.getRadio(radioId);
-        return ResponseEntity.ok(mapper.toDto(radio));
-    }
-
-    @PostMapping
-    @Operation(summary = "Create new radio")
-    public ResponseEntity<RadioDto> createRadio(@RequestBody @Valid CreateRadioRequest request) {
-        Radio created = radioService.createRadio(mapper.toDomain(request));
-        return ResponseEntity.status(HttpStatus.CREATED).body(mapper.toDto(created));
-    }
+@GetMapping("/{linkId}")
+@PreAuthorize("hasAuthority('link:read')")
+public LinkDto getLink(@PathVariable("linkId") String linkId) {
+    return mapper.toDto(service.getLink(linkId));
 }
-```
 
-### Key Annotations
-
-- **`@RestController`**: Combines `@Controller` and `@ResponseBody`
-- **`@RequestMapping`**: Base path for all endpoints in controller
-- **`@GetMapping`**: HTTP GET requests
-- **`@PostMapping`**: HTTP POST requests
-- **`@PutMapping`**: HTTP PUT requests
-- **`@DeleteMapping`**: HTTP DELETE requests
-- **`@PatchMapping`**: HTTP PATCH requests
-- **`@PathVariable`**: Binds URL path variable to parameter
-- **`@RequestBody`**: Binds request body to parameter
-- **`@RequestParam`**: Binds query parameter to parameter
-
----
-
-## HTTP Methods and Mappings
-
-### GET - Retrieve Resources
-
-#### Get Single Resource
-
-```java
-@GetMapping("/{radioId}")
-@Operation(summary = "Get radio by ID")
-public ResponseEntity<RadioDto> getRadio(@PathVariable String radioId) {
-    Radio radio = radioService.getRadio(radioId);
-    return ResponseEntity.ok(mapper.toDto(radio));
-}
-```
-
-**Request:**
-```http
-GET /api/v1/radios/radio-123
-```
-
-#### Get Collection
-
-```java
-@GetMapping
-@Operation(summary = "Get all radios")
-public ResponseEntity<List<RadioDto>> getAllRadios() {
-    List<Radio> radios = radioService.getAllRadios();
-    List<RadioDto> dtos = radios.stream()
-        .map(mapper::toDto)
-        .toList();
-    return ResponseEntity.ok(dtos);
-}
-```
-
-**Request:**
-```http
-GET /api/v1/radios
-```
-
-#### Get with Query Parameters
-
-```java
-@GetMapping
-@Operation(summary = "Get radios by status")
-public ResponseEntity<List<RadioDto>> getRadiosByStatus(
-    @RequestParam(required = false) RadioStatus status,
-    @RequestParam(defaultValue = "0") int page,
-    @RequestParam(defaultValue = "20") int size
-) {
-    List<Radio> radios = radioService.getRadiosByStatus(status, page, size);
-    List<RadioDto> dtos = radios.stream()
-        .map(mapper::toDto)
-        .toList();
-    return ResponseEntity.ok(dtos);
-}
-```
-
-**Request:**
-```http
-GET /api/v1/radios?status=ACTIVE&page=0&size=20
-```
-
-### POST - Create Resources
-
-```java
 @PostMapping
-@Operation(summary = "Create new radio")
-public ResponseEntity<RadioDto> createRadio(@RequestBody @Valid CreateRadioRequest request) {
-    Radio created = radioService.createRadio(mapper.toDomain(request));
-    RadioDto dto = mapper.toDto(created);
-
-    // Return 201 Created with Location header
-    return ResponseEntity
-        .status(HttpStatus.CREATED)
-        .header("Location", "/api/v1/radios/" + created.getId())
-        .body(dto);
+@PreAuthorize("hasAuthority('link:write')")
+public ResponseEntity<LinkDto> createLink(
+        @RequestBody @Valid CreateLinkRequest request) {
+    var created = service.createLink(mapper.toCommand(request));
+    URI location = ServletUriComponentsBuilder.fromCurrentRequest()
+            .path("/{linkId}")
+            .buildAndExpand(created.id())
+            .toUri();
+    return ResponseEntity.created(location).body(mapper.toDto(created));
 }
 ```
 
-**Request:**
+Spring mappings/body/path annotations are from `org.springframework.web.bind.annotation`; `ResponseEntity` is from `org.springframework.http`, `URI` from `java.net`, and this MVC URI builder from `org.springframework.web.servlet.support`. `@Valid` is from `jakarta.validation`; `@PreAuthorize` is from `org.springframework.security.access.prepost`.
+
+A DTO return is sufficient for ordinary `200` responses; use `ResponseEntity` when status/headers vary, or the project's existing response pattern. `@Controller` plus `@ResponseBody` and `ResponseEntity` return types can also work; do not claim only `@RestController` is functional. URI generation must respect trusted proxy configuration and external base paths; never trust arbitrary forwarded headers. WebFlux uses its own request/URI facilities rather than the MVC builder.
+
+For an existing asynchronous service, preserve its type and map on completion:
+
+```java
+@PostMapping("/{linkId}/refresh")
+@PreAuthorize("hasAuthority('link:write')")
+public CompletableFuture<LinkDto> refreshLink(
+        @PathVariable("linkId") String linkId) {
+    return service.refreshLink(linkId).thenApply(mapper::toDto);
+}
+```
+
+This example promises a refreshed representation only if the service completes after a real read. Do not call `.join()`, `.get()`, or `.block()` at the endpoint to hide asynchronous work. Admission, peer ACK, and freshly confirmed state remain different milestones; document which one completes the request. Request timeout/disconnect does not prove a side effect was cancelled or rolled back.
+
+## DTO and request validation
+
+Use dedicated writable request types; do not bind persistence entities or allow caller-controlled owner, tenant, authority, generated ID, or observed-state fields. Records are suitable when they match the project's Java/binding conventions.
+
+```java
+public record CreateLinkRequest(
+        @NotBlank @Size(max = 100) String name,
+        @NotNull LinkMode mode,
+        @NotNull @Valid LinkSettingsRequest settings) {}
+
+public record LinkSettingsRequest(@Min(1) @Max(100) int capacity) {}
+```
+
+`LinkMode` is an application enum. Strings use `@NotBlank`; required enums/objects use `@NotNull`; `@Valid` cascades but does not require presence. Optional numeric inputs should use boxed types when omission must not silently become zero. Size/range constraints generally permit null unless paired with a presence constraint.
+
+Validate at each trust boundary:
+
+- **Body:** `@RequestBody @Valid`, nested `@Valid`, non-null constraints, collection/element bounds, supported enum/value ranges, and cross-field rules. Specify unknown-field behavior where compatibility/security matters.
+- **Path/query/header:** explicit binding names, format/range constraints and allowlisted sort/filter values. Body validation does not validate unrelated path/query parameters. Do not echo arbitrary invalid inputs in public errors.
+- **Ownership/business rules:** the service checks the caller's resource scope, allowed transitions, and authoritative state. Annotation validation is not authorization, and controller-only validation does not protect other callers.
+- **Storage/concurrency:** enforce uniqueness/consistency atomically at the actual store or synchronization boundary. An `exists` check followed by a write has a race; catching a specific known constraint conflict is not permission to expose SQL diagnostics.
+
+MVC validation differs by Framework version and signature. Body binding commonly raises `MethodArgumentNotValidException`; Framework 6.1+ built-in method validation can raise `HandlerMethodValidationException` for direct parameter constraints. Class-level `@Validated` selects proxy-based validation instead; earlier versions need the supported proxy/configuration path. WebFlux uses its corresponding binding/validation exceptions. Confirm an installed validator, cover the actual paths, and distinguish invalid return values (server defects) from invalid input. See [Exception Handling](exception-handling.md#validation-and-framework-errors).
+
+## PUT, PATCH, and concurrent updates
+
+**PUT:** define the complete writable representation and replacement semantics. Do not accept a DTO with optional fields, ignore nulls in a mapper, and call that replacement. Server-owned fields remain protected; absence of a writable field must have a documented replacement/default/rejection meaning.
+
+**PATCH:** select the project's existing patch format before implementing it:
+
+- JSON Merge Patch (`application/merge-patch+json`): omitted properties are unchanged; null removes a property. Validate whether removal is legal; it cannot represent every explicit-null use case.
+- JSON Patch (`application/json-patch+json`): validate allowed paths/operations and apply atomically to the caller's writable projection, then validate the resulting resource.
+- A typed partial-update request: use supported presence tracking, an explicit field mask, or another established representation distinguishing omitted/null/value. A nullable record component or blind MapStruct null-ignore update normally cannot make that distinction.
+
+Do not install a patch dependency or build a generic patch engine for a single endpoint without a real need. Validate every provided field and the final business state; reject clearing non-null fields and protected-field changes. Test omission, explicit null, unknown fields, invalid nested updates, and atomic failure.
+
+When lost updates matter, use the existing optimistic concurrency mechanism: expose a representation version/ETag and require `If-Match` for writes, checking it atomically with the update. A stale conditional write is `412`; use `428` if the published contract requires a missing precondition to be rejected. `If-None-Match` supports conditional reads and `304`. ETags must describe the actual authorized representation; cache policy must not expose private state. Do not add a versioning scheme if the resource has no concurrent-update requirement.
+
+## Bounded collections
+
+- Enforce page/count minimums and a server maximum; examples might default to 20 and cap at 100, but select domain-appropriate limits. Validate in the service as well when non-HTTP callers exist.
+- Use existing pagination DTOs/headers. Do not leak a persistence framework's page serialization as a stable external contract by accident.
+- Specify stable ordering with a unique tie-breaker, supported sorts, total-count cost, and empty-page behavior. Prefer cursor/keyset pagination for large or rapidly changing sets when the actual store supports it.
+- Bound filter lengths, batch input counts, nested expansions, response sizes, and upstream concurrency. Never materialize the full dataset merely to paginate it in the controller.
+
+## Security boundaries
+
+Define public/authenticated/authority/ownership policy for each endpoint. Keep a restrictive HTTP fallback and explicitly enumerate public routes; do not use global `permitAll` or wildcard CORS as a reusable default.
+
+- Enable method authorization with `@EnableMethodSecurity` (`org.springframework.security.config.annotation.method.configuration`) for the imperative `@PreAuthorize` examples. A security starter alone does not activate it. Reactive services need the corresponding reactive configuration/context.
+- `link:read` and `link:write` are illustrative granted authorities. Authority checks do not prove ownership; enforce tenant/resource access in the shared service before reading or mutating. Prevent bypass through other controllers/jobs/service callers according to policy, and account for proxy self-invocation.
+- For JWT authentication, use the established verifier with trusted keys and allowed algorithms; validate issuer, intended audience, expiry, and not-before as required by the token contract. Decoding claims is not verification. Never derive trusted identity or authorities from an unverified token; test invalid signatures and wrong issuer/audience as well as expiry.
+- **Cookie/session or other ambient browser credentials:** retain appropriate CSRF protection for state changes and secure cookie/session settings. A stateless server can still be CSRF-vulnerable if the browser supplies credentials automatically.
+- **Explicit bearer-only API:** disabling CSRF may be appropriate for a narrowly scoped chain only after confirming credentials are not automatically attached by the browser. JWTs in cookies do not automatically qualify. Do not copy a global CSRF disable into mixed session/bearer applications.
+- CORS controls browser cross-origin access, not caller authorization. Allow intended origins/methods/headers and credentials only where needed; handle preflight in the established security integration. WebSocket origins/authentication are a separate policy.
+- Keep authentication failures and access denial in the established security entry point/denied-handler path. A generic advice must not turn them into `500` or an HTTP `200` success envelope.
+
+## Clients, retries, and idempotency
+
+Reuse the installed HTTP client abstraction. On an imperative stack, `RestClient` is available from Spring Framework 6.1+; older versions may use an existing `RestTemplate` or another client. Use `WebClient` for an existing reactive/non-blocking path when WebFlux client support is available; Reactor Core or a WebSocket dependency alone does not establish that client. Do not add a dependency just to match a documentation snippet.
+
+Set bounded connect/read/overall deadlines, connection/concurrency limits, and safe error decoding using the actual client API. Do not block a reactive event loop or log authorization headers/request bodies. Bound response bodies and validate destinations if user input can influence upstream URLs.
+
+Retry only failures and operations known to be safe under the upstream contract. Use an overall deadline, capped attempts, backoff/jitter, and `Retry-After` where appropriate. A timeout after sending a POST/device command has an **unknown outcome**; it is not evidence that replay is safe. Even nominally idempotent updates can have non-idempotent physical side effects.
+
+If idempotency keys are actually required, scope them to caller/operation, bind them to a request fingerprint, reserve/process atomically, define concurrent duplicates and expiry, and retain/replay the result under the intended durability guarantees. A header or in-memory map alone does not give exactly-once execution. Never automatically retry unsafe commands just because a client library supports retries.
+
+## Errors and OpenAPI
+
+Preserve the existing public error envelope and stable codes. For a new API without one, Spring's `ProblemDetail` is a reasonable RFC 9457 contract; migrating an existing API to it is a separate compatibility decision. Typed advice, validation, security errors, and unknown fallback behavior belong in [Exception Handling](exception-handling.md), not duplicated catch blocks in every controller.
+
+When compatible OpenAPI support is installed, document real success/error bodies, media types, authentication/authorities, validation bounds, pagination, `Location`, conditional headers, and async completion semantics. An OpenAPI security declaration documents policy; it does not enforce it. For the retrieval fragment, add annotations from `io.swagger.v3.oas.annotations`/`.responses` to that same method:
+
+```java
+@Operation(summary = "Read a link", description = "Requires link:read and resource access")
+@ApiResponses({
+    @ApiResponse(responseCode = "200", description = "Current authorized representation"),
+    @ApiResponse(responseCode = "401", description = "Authentication required"),
+    @ApiResponse(responseCode = "403", description = "Access denied"),
+    @ApiResponse(responseCode = "404", description = "Link not found")
+})
+```
+
+Adapt `403`/`404` disclosure behavior to the actual ownership policy. Reference the real schemas/security scheme in generated docs rather than claiming annotations create them. Check the Springdoc major against Boot; never add configuration beans merely to fill a template.
+
+Example creation contract for a protected API (credential value deliberately omitted):
+
 ```http
-POST /api/v1/radios
+POST /api/links HTTP/1.1
 Content-Type: application/json
+Authorization: Bearer <access-token>
 
-{
-  "name": "Radio 1",
-  "type": "TYPE_A"
-}
+{"name":"uplink","mode":"ACTIVE","settings":{"capacity":10}}
 ```
 
-**Response:**
 ```http
 HTTP/1.1 201 Created
-Location: /api/v1/radios/radio-123
+Location: /api/links/link-42
 Content-Type: application/json
 
-{
-  "id": "radio-123",
-  "name": "Radio 1",
-  "type": "TYPE_A",
-  "status": "INACTIVE"
-}
+{"id":"link-42","name":"uplink","mode":"ACTIVE"}
 ```
 
-### PUT - Update/Replace Resources
+## Verification and references
 
-```java
-@PutMapping("/{radioId}")
-@Operation(summary = "Update radio")
-public ResponseEntity<RadioDto> updateRadio(
-    @PathVariable String radioId,
-    @RequestBody @Valid UpdateRadioRequest request
-) {
-    Radio updated = radioService.updateRadio(radioId, mapper.toDomain(request));
-    return ResponseEntity.ok(mapper.toDto(updated));
-}
-```
+Test the actual MVC/WebFlux transport with its security filters, not only direct controller calls:
 
-**Request:**
-```http
-PUT /api/v1/radios/radio-123
-Content-Type: application/json
+- Happy path, encoded `Location` and proxy/base-path behavior, media types, status/headers/body, and empty/no-content responses.
+- Malformed body, enum/type mismatch, nested/path/query validation, pagination bounds, and forbidden writable fields.
+- Anonymous, wrong authority, wrong owner/tenant, CSRF/session and bearer behavior, CORS preflight, and alternate service callers.
+- PUT replacement, PATCH absent/null/value, atomic rejection, duplicate creation race, and stale conditional writes where supported.
+- Async exception/timeout/disconnect, safe error contract, and retry/idempotency behavior including unknown command outcome.
+- Generated OpenAPI against runtime behavior. See [Testing](testing.md), [DTO and Mapping](dto-and-mapping.md), and [Complete Examples](complete-examples.md).
 
-{
-  "name": "Updated Radio",
-  "type": "TYPE_B",
-  "status": "ACTIVE"
-}
-```
-
-### PATCH - Partial Update
-
-```java
-@PatchMapping("/{radioId}")
-@Operation(summary = "Partially update radio")
-public ResponseEntity<RadioDto> patchRadio(
-    @PathVariable String radioId,
-    @RequestBody PatchRadioRequest request
-) {
-    Radio patched = radioService.patchRadio(radioId, mapper.toDomain(request));
-    return ResponseEntity.ok(mapper.toDto(patched));
-}
-```
-
-**Request:**
-```http
-PATCH /api/v1/radios/radio-123
-Content-Type: application/json
-
-{
-  "status": "ACTIVE"
-}
-```
-
-### DELETE - Remove Resources
-
-```java
-@DeleteMapping("/{radioId}")
-@Operation(summary = "Delete radio")
-public ResponseEntity<Void> deleteRadio(@PathVariable String radioId) {
-    radioService.deleteRadio(radioId);
-    return ResponseEntity.noContent().build();
-}
-```
-
-**Request:**
-```http
-DELETE /api/v1/radios/radio-123
-```
-
-**Response:**
-```http
-HTTP/1.1 204 No Content
-```
-
----
-
-## ResponseEntity Patterns
-
-### Basic Response
-
-```java
-@GetMapping("/{radioId}")
-public ResponseEntity<RadioDto> getRadio(@PathVariable String radioId) {
-    Radio radio = radioService.getRadio(radioId);
-    return ResponseEntity.ok(mapper.toDto(radio));
-}
-```
-
-### Response with Custom Status
-
-```java
-@PostMapping
-public ResponseEntity<RadioDto> createRadio(@RequestBody @Valid CreateRadioRequest request) {
-    Radio created = radioService.createRadio(mapper.toDomain(request));
-    return ResponseEntity
-        .status(HttpStatus.CREATED)
-        .body(mapper.toDto(created));
-}
-```
-
-### Response with Headers
-
-```java
-@PostMapping
-public ResponseEntity<RadioDto> createRadio(@RequestBody @Valid CreateRadioRequest request) {
-    Radio created = radioService.createRadio(mapper.toDomain(request));
-    return ResponseEntity
-        .status(HttpStatus.CREATED)
-        .header("Location", "/api/v1/radios/" + created.getId())
-        .header("X-Resource-Id", created.getId())
-        .body(mapper.toDto(created));
-}
-```
-
-### No Content Response
-
-```java
-@DeleteMapping("/{radioId}")
-public ResponseEntity<Void> deleteRadio(@PathVariable String radioId) {
-    radioService.deleteRadio(radioId);
-    return ResponseEntity.noContent().build();
-}
-```
-
-### Conditional Response
-
-```java
-@GetMapping("/{radioId}")
-public ResponseEntity<RadioDto> getRadio(@PathVariable String radioId) {
-    Optional<Radio> radio = radioService.findRadio(radioId);
-
-    return radio
-        .map(r -> ResponseEntity.ok(mapper.toDto(r)))
-        .orElse(ResponseEntity.notFound().build());
-}
-```
-
-### Response with Pagination Headers
-
-```java
-@GetMapping
-public ResponseEntity<List<RadioDto>> getRadios(
-    @RequestParam(defaultValue = "0") int page,
-    @RequestParam(defaultValue = "20") int size
-) {
-    Page<Radio> radiosPage = radioService.getRadios(page, size);
-
-    List<RadioDto> dtos = radiosPage.getContent().stream()
-        .map(mapper::toDto)
-        .toList();
-
-    return ResponseEntity.ok()
-        .header("X-Total-Count", String.valueOf(radiosPage.getTotalElements()))
-        .header("X-Page-Number", String.valueOf(radiosPage.getNumber()))
-        .header("X-Page-Size", String.valueOf(radiosPage.getSize()))
-        .body(dtos);
-}
-```
-
----
-
-## Request and Response DTOs
-
-### Request DTO
-
-```java
-package com.company.project.dto.json;
-
-import com.fasterxml.jackson.annotation.JsonProperty;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
-import lombok.Data;
-
-@Data
-public class CreateRadioRequest {
-    @NotBlank(message = "Name is required")
-    @Size(min = 3, max = 100, message = "Name must be between 3 and 100 characters")
-    private String name;
-
-    @NotBlank(message = "Type is required")
-    @JsonProperty("radio_type")
-    private String type;
-}
-```
-
-### Response DTO
-
-```java
-package com.company.project.dto.json;
-
-import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.Data;
-import java.time.LocalDateTime;
-
-@Data
-public class RadioDto {
-    private String id;
-    private String name;
-
-    @JsonProperty("radio_type")
-    private String type;
-
-    @JsonProperty("radio_status")
-    private String status;
-
-    @JsonProperty("created_at")
-    private LocalDateTime createdAt;
-}
-```
-
-### Update Request DTO
-
-```java
-@Data
-public class UpdateRadioRequest {
-    @Size(min = 3, max = 100)
-    private String name;
-
-    @JsonProperty("radio_type")
-    private String type;
-
-    @JsonProperty("radio_status")
-    private String status;
-}
-```
-
-### Patch Request DTO
-
-```java
-@Data
-public class PatchRadioRequest {
-    // All fields optional for PATCH
-    @Size(min = 3, max = 100)
-    private String name;
-
-    @JsonProperty("radio_status")
-    private String status;
-}
-```
-
-### Nested DTOs
-
-```java
-@Data
-public class RadioWithLinksDto {
-    private String id;
-    private String name;
-    private String status;
-    private List<LinkDto> links;
-}
-
-@Data
-public class LinkDto {
-    private String id;
-    private String name;
-    private String status;
-}
-```
-
----
-
-## HTTP Status Codes
-
-### Success Codes (2xx)
-
-#### 200 OK - Successful GET, PUT, PATCH
-
-```java
-@GetMapping("/{radioId}")
-public ResponseEntity<RadioDto> getRadio(@PathVariable String radioId) {
-    Radio radio = radioService.getRadio(radioId);
-    return ResponseEntity.ok(mapper.toDto(radio));  // 200 OK
-}
-```
-
-#### 201 Created - Successful POST
-
-```java
-@PostMapping
-public ResponseEntity<RadioDto> createRadio(@RequestBody @Valid CreateRadioRequest request) {
-    Radio created = radioService.createRadio(mapper.toDomain(request));
-    return ResponseEntity
-        .status(HttpStatus.CREATED)  // 201 Created
-        .body(mapper.toDto(created));
-}
-```
-
-#### 204 No Content - Successful DELETE
-
-```java
-@DeleteMapping("/{radioId}")
-public ResponseEntity<Void> deleteRadio(@PathVariable String radioId) {
-    radioService.deleteRadio(radioId);
-    return ResponseEntity.noContent().build();  // 204 No Content
-}
-```
-
-### Client Error Codes (4xx)
-
-#### 400 Bad Request - Validation Error
-
-```java
-@PostMapping
-public ResponseEntity<RadioDto> createRadio(@RequestBody @Valid CreateRadioRequest request) {
-    // If validation fails, Spring automatically returns 400
-    Radio created = radioService.createRadio(mapper.toDomain(request));
-    return ResponseEntity.status(HttpStatus.CREATED).body(mapper.toDto(created));
-}
-```
-
-#### 404 Not Found - Resource Not Found
-
-Handled by exception handler:
-
-```java
-@ExceptionHandler(NoSuchElementException.class)
-public ResponseEntity<ErrorResponse> handleNotFound(NoSuchElementException ex) {
-    ErrorResponse error = new ErrorResponse(
-        HttpStatus.NOT_FOUND.value(),
-        ex.getMessage()
-    );
-    return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
-}
-```
-
-#### 409 Conflict - Resource Conflict
-
-```java
-@PostMapping
-public ResponseEntity<RadioDto> createRadio(@RequestBody @Valid CreateRadioRequest request) {
-    if (radioService.existsByName(request.getName())) {
-        ErrorResponse error = new ErrorResponse(
-            HttpStatus.CONFLICT.value(),
-            "Radio with name already exists"
-        );
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
-    }
-
-    Radio created = radioService.createRadio(mapper.toDomain(request));
-    return ResponseEntity.status(HttpStatus.CREATED).body(mapper.toDto(created));
-}
-```
-
-### Server Error Codes (5xx)
-
-#### 500 Internal Server Error
-
-Handled by exception handler:
-
-```java
-@ExceptionHandler(Exception.class)
-public ResponseEntity<ErrorResponse> handleGenericError(Exception ex) {
-    log.error("Unexpected error", ex);
-    ErrorResponse error = new ErrorResponse(
-        HttpStatus.INTERNAL_SERVER_ERROR.value(),
-        "An unexpected error occurred"
-    );
-    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
-}
-```
-
----
-
-## OpenAPI Documentation
-
-### Controller-Level Documentation
-
-```java
-import io.swagger.v3.oas.annotations.tags.Tag;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
-import io.swagger.v3.oas.annotations.Parameter;
-
-@RestController
-@RequestMapping("/api/v1/radios")
-@RequiredArgsConstructor
-@Tag(name = "Radio Management", description = "APIs for managing radios")
-public class RadioRestController {
-    private final RadioService radioService;
-    private final RadioMapper mapper;
-
-    @GetMapping("/{radioId}")
-    @Operation(
-        summary = "Get radio by ID",
-        description = "Retrieves a radio by its unique identifier"
-    )
-    @ApiResponses(value = {
-        @ApiResponse(responseCode = "200", description = "Radio found"),
-        @ApiResponse(responseCode = "404", description = "Radio not found")
-    })
-    public ResponseEntity<RadioDto> getRadio(
-        @Parameter(description = "Radio ID", required = true)
-        @PathVariable String radioId
-    ) {
-        Radio radio = radioService.getRadio(radioId);
-        return ResponseEntity.ok(mapper.toDto(radio));
-    }
-}
-```
-
-### Request Body Documentation
-
-```java
-@PostMapping
-@Operation(
-    summary = "Create new radio",
-    description = "Creates a new radio with the provided details"
-)
-@ApiResponses(value = {
-    @ApiResponse(responseCode = "201", description = "Radio created successfully"),
-    @ApiResponse(responseCode = "400", description = "Invalid input")
-})
-public ResponseEntity<RadioDto> createRadio(
-    @io.swagger.v3.oas.annotations.parameters.RequestBody(
-        description = "Radio creation request",
-        required = true
-    )
-    @RequestBody @Valid CreateRadioRequest request
-) {
-    Radio created = radioService.createRadio(mapper.toDomain(request));
-    return ResponseEntity.status(HttpStatus.CREATED).body(mapper.toDto(created));
-}
-```
-
-### Schema Documentation
-
-```java
-import io.swagger.v3.oas.annotations.media.Schema;
-
-@Data
-@Schema(description = "Radio data transfer object")
-public class RadioDto {
-    @Schema(description = "Radio unique identifier", example = "radio-123")
-    private String id;
-
-    @Schema(description = "Radio name", example = "Main Radio")
-    private String name;
-
-    @Schema(description = "Radio type", example = "TYPE_A")
-    @JsonProperty("radio_type")
-    private String type;
-
-    @Schema(description = "Radio status", example = "ACTIVE")
-    @JsonProperty("radio_status")
-    private String status;
-}
-```
-
-### OpenAPI Configuration
-
-```java
-import io.swagger.v3.oas.models.OpenAPI;
-import io.swagger.v3.oas.models.info.Info;
-import io.swagger.v3.oas.models.info.Contact;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-
-@Configuration
-public class OpenApiConfig {
-
-    @Bean
-    public OpenAPI customOpenAPI() {
-        return new OpenAPI()
-            .info(new Info()
-                .title("Radio Management API")
-                .version("1.0.0")
-                .description("REST API for managing radios and links")
-                .contact(new Contact()
-                    .name("API Support")
-                    .email("support@company.com")));
-    }
-}
-```
-
----
-
-## Error Handling
-
-### Error Response DTO
-
-```java
-package com.company.project.dto.json;
-
-import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import java.time.LocalDateTime;
-
-@Data
-@AllArgsConstructor
-public class ErrorResponse {
-    private int status;
-    private String message;
-
-    @JsonProperty("timestamp")
-    private LocalDateTime timestamp;
-
-    public ErrorResponse(int status, String message) {
-        this.status = status;
-        this.message = message;
-        this.timestamp = LocalDateTime.now();
-    }
-}
-```
-
-### Global Exception Handler
-
-```java
-import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.MethodArgumentNotValidException;
-import org.springframework.http.ResponseEntity;
-import org.springframework.http.HttpStatus;
-import lombok.extern.slf4j.Slf4j;
-import java.util.HashMap;
-import java.util.Map;
-
-@RestControllerAdvice
-@Slf4j
-public class GlobalRestExceptionHandler {
-
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, String>> handleValidation(
-        MethodArgumentNotValidException ex
-    ) {
-        Map<String, String> errors = new HashMap<>();
-        ex.getBindingResult().getFieldErrors().forEach(error ->
-            errors.put(error.getField(), error.getDefaultMessage())
-        );
-        log.error("Validation error: {}", errors);
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errors);
-    }
-
-    @ExceptionHandler(NoSuchElementException.class)
-    public ResponseEntity<ErrorResponse> handleNotFound(NoSuchElementException ex) {
-        log.error("Not found: {}", ex.getMessage());
-        ErrorResponse error = new ErrorResponse(
-            HttpStatus.NOT_FOUND.value(),
-            ex.getMessage()
-        );
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
-    }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ErrorResponse> handleBadRequest(IllegalArgumentException ex) {
-        log.error("Bad request: {}", ex.getMessage());
-        ErrorResponse error = new ErrorResponse(
-            HttpStatus.BAD_REQUEST.value(),
-            ex.getMessage()
-        );
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
-    }
-
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleGenericError(Exception ex) {
-        log.error("Unexpected error", ex);
-        ErrorResponse error = new ErrorResponse(
-            HttpStatus.INTERNAL_SERVER_ERROR.value(),
-            "An unexpected error occurred"
-        );
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
-    }
-}
-```
-
----
-
-## Best Practices
-
-### 1. Use Proper HTTP Methods
-
-```java
-// GOOD: Correct HTTP methods
-@GetMapping("/{id}")          // GET for retrieval
-@PostMapping                  // POST for creation
-@PutMapping("/{id}")          // PUT for full update
-@PatchMapping("/{id}")        // PATCH for partial update
-@DeleteMapping("/{id}")       // DELETE for removal
-
-// BAD: Using GET for everything
-@GetMapping("/createRadio")   // Should be POST
-@GetMapping("/deleteRadio")   // Should be DELETE
-```
-
-### 2. Return ResponseEntity
-
-```java
-// GOOD: Return ResponseEntity with proper status
-@PostMapping
-public ResponseEntity<RadioDto> createRadio(@RequestBody @Valid CreateRadioRequest request) {
-    Radio created = radioService.createRadio(mapper.toDomain(request));
-    return ResponseEntity.status(HttpStatus.CREATED).body(mapper.toDto(created));
-}
-
-// BAD: Return DTO directly (always 200 OK)
-@PostMapping
-public RadioDto createRadio(@RequestBody @Valid CreateRadioRequest request) {
-    Radio created = radioService.createRadio(mapper.toDomain(request));
-    return mapper.toDto(created);  // Always returns 200, should be 201
-}
-```
-
-### 3. Use Path Variables for IDs
-
-```java
-// GOOD: ID in path
-@GetMapping("/{radioId}")
-public ResponseEntity<RadioDto> getRadio(@PathVariable String radioId) {
-    // ...
-}
-
-// BAD: ID as query parameter
-@GetMapping
-public ResponseEntity<RadioDto> getRadio(@RequestParam String radioId) {
-    // ...
-}
-```
-
-### 4. Validate Request Bodies
-
-```java
-// GOOD: Validate with @Valid
-@PostMapping
-public ResponseEntity<RadioDto> createRadio(@RequestBody @Valid CreateRadioRequest request) {
-    // Validation happens automatically
-}
-
-// Request DTO with validation
-@Data
-public class CreateRadioRequest {
-    @NotBlank
-    @Size(min = 3, max = 100)
-    private String name;
-}
-
-// BAD: No validation
-@PostMapping
-public ResponseEntity<RadioDto> createRadio(@RequestBody CreateRadioRequest request) {
-    // No validation - accepts invalid data
-}
-```
-
-### 5. Version Your APIs
-
-```java
-// GOOD: Versioned API
-@RestController
-@RequestMapping("/api/v1/radios")
-public class RadioRestController {
-    // v1 endpoints
-}
-
-@RestController
-@RequestMapping("/api/v2/radios")
-public class RadioRestControllerV2 {
-    // v2 endpoints with breaking changes
-}
-
-// BAD: No versioning
-@RestController
-@RequestMapping("/api/radios")
-public class RadioRestController {
-    // Breaking changes affect all clients
-}
-```
-
----
-
-## Common Pitfalls
-
-### 1. Using @Controller Instead of @RestController
-
-```java
-// BAD: Using @Controller
-@Controller
-@RequestMapping("/api/v1/radios")
-public class RadioRestController {
-    @GetMapping("/{radioId}")
-    public ResponseEntity<RadioDto> getRadio(@PathVariable String radioId) {
-        // Won't work without @ResponseBody
-    }
-}
-
-// GOOD: Use @RestController
-@RestController
-@RequestMapping("/api/v1/radios")
-public class RadioRestController {
-    @GetMapping("/{radioId}")
-    public ResponseEntity<RadioDto> getRadio(@PathVariable String radioId) {
-        // Works correctly
-    }
-}
-```
-
-### 2. Missing @RequestBody
-
-```java
-// BAD: Missing @RequestBody
-@PostMapping
-public ResponseEntity<RadioDto> createRadio(CreateRadioRequest request) {
-    // request will be null!
-}
-
-// GOOD: Use @RequestBody
-@PostMapping
-public ResponseEntity<RadioDto> createRadio(@RequestBody @Valid CreateRadioRequest request) {
-    // request is properly bound
-}
-```
-
-### 3. Wrong HTTP Status for Operations
-
-```java
-// BAD: Wrong status codes
-@PostMapping
-public ResponseEntity<RadioDto> createRadio(@RequestBody @Valid CreateRadioRequest request) {
-    Radio created = radioService.createRadio(mapper.toDomain(request));
-    return ResponseEntity.ok(mapper.toDto(created));  // Should be 201, not 200
-}
-
-@DeleteMapping("/{radioId}")
-public ResponseEntity<String> deleteRadio(@PathVariable String radioId) {
-    radioService.deleteRadio(radioId);
-    return ResponseEntity.ok("Deleted");  // Should be 204, not 200
-}
-
-// GOOD: Correct status codes
-@PostMapping
-public ResponseEntity<RadioDto> createRadio(@RequestBody @Valid CreateRadioRequest request) {
-    Radio created = radioService.createRadio(mapper.toDomain(request));
-    return ResponseEntity.status(HttpStatus.CREATED).body(mapper.toDto(created));  // 201
-}
-
-@DeleteMapping("/{radioId}")
-public ResponseEntity<Void> deleteRadio(@PathVariable String radioId) {
-    radioService.deleteRadio(radioId);
-    return ResponseEntity.noContent().build();  // 204
-}
-```
-
-### 4. Exposing Domain Models Directly
-
-```java
-// BAD: Return domain model
-@GetMapping("/{radioId}")
-public ResponseEntity<Radio> getRadio(@PathVariable String radioId) {
-    Radio radio = radioService.getRadio(radioId);
-    return ResponseEntity.ok(radio);  // Exposes internal structure
-}
-
-// GOOD: Return DTO
-@GetMapping("/{radioId}")
-public ResponseEntity<RadioDto> getRadio(@PathVariable String radioId) {
-    Radio radio = radioService.getRadio(radioId);
-    return ResponseEntity.ok(mapper.toDto(radio));  // Clean API contract
-}
-```
-
-### 5. Not Using OpenAPI Documentation
-
-```java
-// BAD: No documentation
-@GetMapping("/{radioId}")
-public ResponseEntity<RadioDto> getRadio(@PathVariable String radioId) {
-    // No documentation - unclear what this does
-}
-
-// GOOD: Add documentation
-@GetMapping("/{radioId}")
-@Operation(summary = "Get radio by ID", description = "Retrieves a radio by its unique identifier")
-@ApiResponses(value = {
-    @ApiResponse(responseCode = "200", description = "Radio found"),
-    @ApiResponse(responseCode = "404", description = "Radio not found")
-})
-public ResponseEntity<RadioDto> getRadio(
-    @Parameter(description = "Radio ID", required = true)
-    @PathVariable String radioId
-) {
-    // Well documented
-}
-```
-
----
-
-## Summary
-
-REST API development with Spring Web follows these key patterns:
-
-1. **Use `@RestController`** for REST endpoints
-2. **Return `ResponseEntity<T>`** for flexible responses with proper status codes
-3. **Use proper HTTP methods**: GET, POST, PUT, PATCH, DELETE
-4. **Path variables for IDs**, query parameters for filters
-5. **Validate with `@Valid`** on request bodies
-6. **Use DTOs** - never expose domain models
-7. **Proper HTTP status codes**: 200 OK, 201 Created, 204 No Content, 404 Not Found, etc.
-8. **Document with OpenAPI**: `@Operation`, `@Tag`, `@ApiResponse`
-9. **Global exception handling** with `@RestControllerAdvice`
-10. **Version your APIs** with `/api/v1/`, `/api/v2/`
-
-Follow these patterns for clean, well-documented REST APIs.
+Version-matched references: [Spring MVC controllers](https://docs.spring.io/spring-framework/reference/web/webmvc/mvc-controller.html), [MVC validation](https://docs.spring.io/spring-framework/reference/web/webmvc/mvc-controller/ann-validation.html), [REST clients](https://docs.spring.io/spring-framework/reference/integration/rest-clients.html), [Spring Security CSRF](https://docs.spring.io/spring-security/reference/servlet/exploits/csrf.html), and [HTTP semantics (RFC 9110)](https://www.rfc-editor.org/rfc/rfc9110).
