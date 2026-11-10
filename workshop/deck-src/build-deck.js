@@ -1075,6 +1075,356 @@ function section(title, sub, label) {
   s.addNotes("The risk vocabulary. Context rot connects back to the context window slides. Prompt injection matters as soon as an agent reads content you don't control, such as issues, web pages or API results; Simon Willison's lethal trifecta (simonwillison.net/2025/Jun/16/the-lethal-trifecta) is a simple test for when it becomes dangerous. Evals and LLM-as-judge are how teams measure agent quality systematically.");
 }
 
+// Buzzwords v2: one idea per slide, built around the "___ engineering" ladder
+const RUNGS = ["Prompt", "Context", "Harness", "Loop", "Graph"];
+
+// "**term**" in slide text renders the engineering term in bold
+function para(text, opts, breakLine = false) {
+  const runs = text.split(/(\*\*[^*]+\*\*)/).filter(Boolean).map((p) => (p.startsWith("**")
+    ? { text: p.slice(2, -2), options: { ...opts, bold: true } }
+    : { text: p, options: { ...opts } }));
+  runs.forEach((r, i) => { if (i > 0) { delete r.options.paraSpaceBefore; delete r.options.bullet; } });
+  if (breakLine) runs[runs.length - 1].options.breakLine = true;
+  return runs;
+}
+
+function rungStrip(s, active) {
+  const w = 0.98;
+  const x0 = W - M - RUNGS.length * w - (RUNGS.length - 1) * 0.06;
+  RUNGS.forEach((r, i) => {
+    const on = i === active;
+    chip(s, x0 + i * (w + 0.06), 0.52, w, 0.34, r, on ? C.green : C.soft, on ? C.white : C.muted, 10.5);
+  });
+}
+
+function forYouBand(s, text, y = 5.3, h = 1.35) {
+  box(s, M, y, CW, h, C.soft);
+  s.addText([
+    { text: "What it means for you", options: { bold: true, fontSize: 12, color: C.green, charSpacing: 1, breakLine: true } },
+    ...para(text, { fontSize: 16, color: C.ink, paraSpaceBefore: 4 }),
+  ], { x: M, y, w: CW, h, fontFace: BF, valign: "middle", margin: 14 });
+}
+
+function termSlide(o) {
+  const s = content(o.title, o.lead, "Buzzwords");
+  if (o.rung !== undefined) rungStrip(s, o.rung);
+  box(s, M, 1.95, 7.25, 3.15, C.tint);
+  const left = para(o.what, { fontSize: 19, color: C.ink }, !!o.detail);
+  if (o.detail) left.push(...para(o.detail, { fontSize: 14, color: C.muted, paraSpaceBefore: 12 }));
+  s.addText(left, { x: M, y: 1.95, w: 7.25, h: 3.15, fontFace: BF, valign: "middle", margin: 16 });
+  box(s, M + 7.45, 1.95, CW - 7.45, 3.15, C.dark);
+  s.addText([
+    { text: o.quote, options: { fontSize: 17, italic: true, color: C.white, breakLine: true } },
+    { text: o.who, options: { fontSize: 12, color: C.lime, paraSpaceBefore: 12 } },
+  ], { x: M + 7.45, y: 1.95, w: CW - 7.45, h: 3.15, fontFace: BF, valign: "middle", margin: 16 });
+  forYouBand(s, o.forYou);
+  s.addNotes(o.notes);
+  return s;
+}
+
+function listCard(s, x, title, sub, items, fill) {
+  box(s, x, 1.95, 3.55, 3.15, fill);
+  s.addText([
+    { text: title, options: { bold: true, fontSize: 20, color: C.ink, breakLine: true } },
+    ...para(sub, { fontSize: 12.5, italic: true, color: C.muted }, true),
+    ...items.flatMap((it, i) => para(it, { bullet: { indent: 14 }, fontSize: 14.5, color: C.ink, paraSpaceBefore: i === 0 ? 10 : 6 }, i < items.length - 1)),
+  ], { x, y: 1.95, w: 3.55, h: 3.15, fontFace: BF, valign: "top", margin: 14 });
+}
+
+// Section
+{
+  const s = section("What they're all talking about", "Buzzwords, decoded: the terms behind the hype, and what they mean for you", "Buzzwords");
+  s.addNotes("This section follows the vocabulary the people building the tools actually use in 2026: Karpathy, the Claude Code and Codex teams, Andrew Ng. The backbone is the '___ engineering' ladder. For each term: what it means, who says it, and what it changes for you tomorrow.");
+}
+
+// Floor and ceiling
+{
+  const s = content("Vibe coding raises the floor", "Same agents, same speed. The difference is whether anyone engineers the result.", "Buzzwords");
+  box(s, M, 1.95, 5.95, 3.15, C.amberTint);
+  s.addText([
+    { text: "Vibe coding", options: { bold: true, fontSize: 22, color: C.amber, breakLine: true } },
+    { text: "Karpathy, February 2025 · Collins Word of the Year 2025", options: { fontSize: 12, italic: true, color: C.muted, breakLine: true } },
+    ...para("Describe it, accept everything, never read the code: **no code review**, **no tests**. Now anyone can build something.", { fontSize: 16, color: C.ink, paraSpaceBefore: 10 }, true),
+    { text: "Great for prototypes and personal tools.", options: { fontSize: 16, bold: true, color: C.ink, paraSpaceBefore: 10 } },
+  ], { x: M, y: 1.95, w: 5.95, h: 3.15, fontFace: BF, valign: "middle", margin: 16 });
+  box(s, 6.78, 1.95, 5.95, 3.15, C.tint);
+  s.addText([
+    { text: "Agentic engineering", options: { bold: true, fontSize: 22, color: C.green, breakLine: true } },
+    { text: "Karpathy, February 2026", options: { fontSize: 12, italic: true, color: C.muted, breakLine: true } },
+    ...para("Agents write most of the code. You own the **spec** and the **acceptance criteria**, **review the diff**, run the **tests** and answer for the result.", { fontSize: 16, color: C.ink, paraSpaceBefore: 10 }, true),
+    { text: "This is what today is about.", options: { fontSize: 16, bold: true, color: C.ink, paraSpaceBefore: 10 } },
+  ], { x: 6.78, y: 1.95, w: 5.95, h: 3.15, fontFace: BF, valign: "middle", margin: 16 });
+  box(s, M, 5.3, CW, 1.35, C.dark);
+  s.addText([
+    { text: "“Vibe coding raises the floor. Agentic engineering raises the ceiling.”", options: { fontSize: 22, italic: true, color: C.white, breakLine: true } },
+    { text: "Andrej Karpathy, Sequoia Ascent, April 2026", options: { fontSize: 12, color: C.lime, paraSpaceBefore: 6 } },
+  ], { x: M, y: 5.3, w: CW, h: 1.35, fontFace: BF, valign: "middle", margin: 16 });
+  s.addNotes("Karpathy coined 'vibe coding' in February 2025; Collins named it Word of the Year 2025. A year later he proposed 'agentic engineering' for the professional version. At Sequoia Ascent (April 2026) he put it as: vibe coding raises the floor, so anyone can build; agentic engineering raises the ceiling, preserving the quality bar of professional software. 'You are still responsible for your software, just as before. But can you go faster? Spoiler: you can.' Sources: karpathy.bearblog.dev/sequoia-ascent-2026, x.com/karpathy/status/2019137879310836075.");
+}
+
+// The ladder
+{
+  const s = content("The “___ engineering” ladder", "Every few months the industry names a new layer. Each one wraps the one before; none replaces it.", "Buzzwords");
+  const steps = [
+    ["Prompt", "2023", "Write a clear **ticket**.", C.soft, C.ink, C.muted],
+    ["Context", "2025", "Hand over the **docs** and code it needs.", C.lime, C.ink, C.ink],
+    ["Harness", "Feb 2026", "**Coding standards**, **CI** and **quality gates**.", "7FA88F", C.white, C.white],
+    ["Loop", "Jun 2026", "Retry until the **acceptance criteria** pass.", C.green, C.white, "DCE8DE"],
+    ["Graph", "2026", "The **pipeline**: stages and **approval gates**.", C.dark, C.white, "A9C3B5"],
+  ];
+  const stepW = 2.33;
+  const gap = 0.12;
+  const bottom = 6.65;
+  steps.forEach(([name, year, meaning, fill, color, sub], i) => {
+    const h = 1.45 + i * 0.82;
+    const x = M + i * (stepW + gap);
+    const y = bottom - h;
+    box(s, x, y, stepW, h, fill);
+    s.addText([
+      { text: name, options: { bold: true, fontSize: 20, color, breakLine: true } },
+      { text: "engineering · " + year, options: { fontSize: 11.5, color: sub, breakLine: true } },
+      ...para(meaning, { fontSize: 13.5, color, paraSpaceBefore: 6 }),
+    ], { x, y, w: stepW, h: 1.45, fontFace: BF, valign: "top", margin: 10 });
+  });
+  s.addNotes("The backbone of this section. Prompt engineering (2023-24) was about wording. Context engineering (2025, named by Shopify's Tobi Lütke and popularised by Karpathy) is about what information the model has. Harness engineering (OpenAI, February 2026) is the environment around the model: tools, permissions, tests, checks. Loop engineering (June 2026, viral after Boris Cherny and Peter Steinberger) is designing the loop that prompts the agent instead of prompting it yourself. Graph engineering (later in 2026, mostly from consultancies and vendors) is connecting several loops into one workflow. The point to make: each layer wraps the previous one. You still need good prompts and good context inside a loop. Sources: blog.codacy.com/graph-harnesses-and-loop-engineering-explained, addyosmani.com/blog/loop-engineering.");
+}
+
+// Context engineering: what goes in, what stays out
+{
+  const s = content("Context engineering", "Not the magic words, but the right information. Like onboarding a new hire, on every single turn.", "Buzzwords");
+  rungStrip(s, 1);
+  listCard(s, M, "Give it", "What a new teammate would need", [
+    "The **ticket**: goal and **acceptance criteria**",
+    "The relevant files, not the whole repo",
+    "Our **coding standards** (AGENTS.md)",
+    "The **design decisions** already made",
+  ], C.tint);
+  listCard(s, M + 3.7, "Keep it out", "Noise that crowds out the task", [
+    "Full logs: paste the failing part",
+    "Unrelated files and earlier tasks",
+    "Stale **docs** that contradict the code",
+    "A 1,000-line instructions file",
+  ], C.amberTint);
+  box(s, M + 7.45, 1.95, CW - 7.45, 3.15, C.dark);
+  s.addText([
+    { text: "“The delicate art and science of filling the context window with just the right information for the next step.”", options: { fontSize: 16, italic: true, color: C.white, breakLine: true } },
+    { text: "Andrej Karpathy, June 2025, backing Shopify CEO Tobi Lütke's term", options: { fontSize: 12, color: C.lime, breakLine: true, paraSpaceBefore: 10 } },
+    { text: "Why less is more: context rot. Quality drops as the window fills, well before the limit.", options: { fontSize: 12.5, color: "A9C3B5", paraSpaceBefore: 10 } },
+  ], { x: M + 7.45, y: 1.95, w: CW - 7.45, h: 3.15, fontFace: BF, valign: "middle", margin: 16 });
+  forYouBand(s, "Brief the agent like a good **ticket**: goal, **acceptance criteria**, relevant files, constraints. One task, one session; start fresh when the task changes.");
+  s.addNotes("Context engineering replaced 'prompt engineering' as the popular term in mid-2025. Shopify CEO Tobi Lütke used it first (June 18, 2025: 'the art of providing all the context for the task to be plausibly solvable by the LLM'); a week later Karpathy backed it: '+1 for context engineering over prompt engineering', calling it 'the delicate art and science of filling the context window with just the right information for the next step', and warning that too little and the model lacks what it needs, too much or too irrelevant and costs go up and performance comes down. The engineering parallel is onboarding: you would give a new teammate the ticket with its acceptance criteria, the relevant code, the coding standards and the decisions already made, and you would not hand them every log and every old document. OpenAI's harness engineering team put the same lesson as 'give Codex a map, not a 1,000-page instruction manual': a short AGENTS.md of about 100 lines that points to deeper docs. Context rot is why less is more: Chroma's 2025 study of 18 models found performance dropped as input length grew, even on simple tasks. This is what the room practised in the morning context-window slides. Sources: simonwillison.net/2025/Jun/27/context-engineering (quotes both posts), openai.com/index/harness-engineering, research.trychroma.com/context-rot.");
+}
+
+// Harness engineering: guides and sensors
+{
+  const s = content("Harness engineering", "Agent = model + harness. The tool ships one harness; harness engineering is the one you build around it.", "Buzzwords");
+  rungStrip(s, 2);
+  listCard(s, M, "Guides", "Like **coding standards** and **design docs**: steer it before it acts", [
+    "AGENTS.md and SHARED.md: our **conventions**",
+    "Our backend and frontend skills",
+    "A **spec** or plan it works from",
+    "Language server: types up front",
+  ], C.tint);
+  listCard(s, M + 3.7, "Sensors", "Like **CI** and **quality gates**: let it fix itself after it acts", [
+    "**Build**, **tests** and type checks it must run",
+    "**Linters** whose messages say how to fix",
+    "A read-only reviewer agent: **code review**",
+    "Hooks that run checks on every edit",
+  ], C.soft);
+  box(s, M + 7.45, 1.95, CW - 7.45, 3.15, C.dark);
+  s.addText([
+    { text: "“Our most difficult challenges now center on designing environments, feedback loops, and control systems.”", options: { fontSize: 16, italic: true, color: C.white, breakLine: true } },
+    { text: "Ryan Lopopolo, OpenAI, February 2026", options: { fontSize: 12, color: C.lime, breakLine: true, paraSpaceBefore: 10 } },
+    { text: "His team shipped about a million lines in five months, with zero lines written by hand.", options: { fontSize: 12.5, color: "A9C3B5", paraSpaceBefore: 10 } },
+  ], { x: M + 7.45, y: 1.95, w: CW - 7.45, h: 3.15, fontFace: BF, valign: "middle", margin: 16 });
+  forYouBand(s, "Guides alone: rules it never verifies. Sensors alone: the same bug, again and again. Treat a repeated mistake like a **postmortem** action item: add a guide or a sensor so it can't happen twice.");
+  s.addNotes("Two meanings of 'harness'. Every tool ships a built-in harness: its system prompt, tools and way of reading files; that is what we called the harness in the building-blocks slide. Harness engineering, as OpenAI named it in February 2026, is the outer harness you build around it for your codebase. Birgitta Böckeler (Thoughtworks, martinfowler.com, April 2026) splits it into guides, which steer the agent before it acts (AGENTS.md, skills, specs, language servers), and sensors, which let it correct itself after it acts (tests, type checks, linters, structural tests, review agents). Sensors work best when their output is written for the agent, for example lint messages that say how to fix the problem; OpenAI did exactly that with custom linters. Your job is the steering loop: whenever an issue happens more than once, improve a guide or a sensor. OpenAI's team: five months, about a million lines, 0 lines of manually written code, three engineers growing to seven; when the agent struggled, they asked what capability was missing and how to make it legible and enforceable for the agent. Everything on the left is something we set up this morning. Sources: openai.com/index/harness-engineering, martinfowler.com/articles/harness-engineering.html.");
+}
+
+function flowNode(s, x, y, w, kind, name, fill, color = C.ink, h = 0.7) {
+  box(s, x, y, w, h, fill);
+  s.addText([
+    { text: kind, options: { fontSize: 9, bold: true, color: color === C.ink ? C.muted : C.lime, charSpacing: 1, breakLine: true } },
+    { text: name, options: { fontSize: 13, bold: true, color } },
+  ], { x, y, w, h, fontFace: BF, align: "center", valign: "middle", margin: 3 });
+}
+
+function line(s, x, y, w, h, color, arrowAt) {
+  const l = { color, width: 2 };
+  if (arrowAt === "end") l.endArrowType = "triangle";
+  if (arrowAt === "begin") l.beginArrowType = "triangle";
+  s.addShape(pres.shapes.LINE, { x, y, w, h, line: l });
+}
+
+// Loop engineering: one loop, drawn
+{
+  const s = content("Loop engineering", "Like a CI pipeline for the agent: it keeps going until the acceptance criteria pass, or it escalates.", "Buzzwords");
+  rungStrip(s, 3);
+  box(s, M, 1.95, 7.25, 3.15, C.tint);
+  const y = 2.2;
+  flowNode(s, 0.8, y, 1.6, "START", "Trigger", C.white);
+  arrow(s, 2.45, y + 0.19, 0.35, 0.32, C.green);
+  flowNode(s, 2.85, y, 1.6, "AGENT", "Does the work", C.white);
+  arrow(s, 4.5, y + 0.19, 0.35, 0.32, C.green);
+  flowNode(s, 4.9, y, 1.6, "CHECK", "Acceptance criteria", C.soft);
+  arrow(s, 6.55, y + 0.19, 0.35, 0.32, C.green);
+  flowNode(s, 6.95, y, 0.75, "PASS", "Done", C.dark, C.white);
+  const retryY = 3.3;
+  line(s, 5.4, y + 0.7, 0, retryY - y - 0.7, C.green);
+  line(s, 3.65, retryY, 1.75, 0, C.green);
+  line(s, 3.65, y + 0.7, 0, retryY - y - 0.7, C.green, "begin");
+  s.addText(para("fail: retry, up to a **retry limit**", { fontSize: 11.5, italic: true, color: C.green }), { x: 3.75, y: retryY + 0.03, w: 2.6, h: 0.3, fontFace: BF, margin: 0 });
+  line(s, 6.1, y + 0.7, 0, 3.95 - y - 0.7, C.amber, "end");
+  flowNode(s, 5.1, 3.95, 2.6, "STUCK", "Escalate to you", C.amberTint);
+  s.addText([
+    ...para("**Trigger:** your prompt, a schedule like a **cron job**, a new issue.", { fontSize: 12, color: C.ink }, true),
+    ...para("**Memory:** a progress file in the repo, so the next run knows what's done.", { fontSize: 12, color: C.ink }),
+  ], { x: 0.8, y: 3.75, w: 4.15, h: 1.2, fontFace: BF, valign: "middle", margin: 0 });
+  box(s, M + 7.45, 1.95, CW - 7.45, 3.15, C.dark);
+  s.addText([
+    { text: "“I don't prompt Claude anymore. I have loops running that prompt Claude… My job is to write loops.”", options: { fontSize: 16, italic: true, color: C.white, breakLine: true } },
+    { text: "Boris Cherny, head of Claude Code, June 2026", options: { fontSize: 12, color: C.lime, breakLine: true, paraSpaceBefore: 10 } },
+    { text: "Peter Steinberger (OpenClaw), the same week: “You should be designing loops that prompt your agents.”", options: { fontSize: 12.5, color: "A9C3B5", paraSpaceBefore: 10 } },
+  ], { x: M + 7.45, y: 1.95, w: CW - 7.45, h: 3.15, fontFace: BF, valign: "middle", margin: 16 });
+  forYouBand(s, "You run two loops today: Superpowers reviews every task before the next one, and Agentcraft stops after five cycles. Building your own? Write **acceptance criteria** it can't fake, set a **retry limit**, and decide where it **escalates**.");
+  s.addNotes("Loop engineering went viral in June 2026 after Boris Cherny (head of Claude Code) and Peter Steinberger (OpenClaw) posted about it; Andrew Ng called it a hot buzzphrase. The Cherny quote is as reported by Addy Osmani. Walk the diagram: something triggers the agent (you, a schedule, a new issue); it works; a check it cannot talk its way past decides: pass means done, fail means try again, and after a few failed attempts it stops and hands over to a person. Progress lives in a file in the repo, because the agent forgets between runs and the repo does not. Codacy's version: the loop decides when the agent retries, escalates or stops; in their own agents, retries beyond about two rounds stopped helping and started creating new problems. Osmani: keep the maker away from the checker, because the model that wrote the code grades its own homework too kindly. Products now ship this: /loop and /goal in Claude Code, Automations and /goal in Codex. Today's loops: Superpowers runs a fresh implementer per task with a spec review and a quality review before moving on; Agentcraft runs builder, reviews, refactorer and verification with a five-cycle cap. 'Build the loop. Stay the engineer.' (Osmani). Sources: addyosmani.com/blog/loop-engineering, blog.codacy.com/graph-harnesses-and-loop-engineering-explained, x.com/AndrewYNg/status/2071988145667928442.");
+}
+
+// Graph engineering: Superpowers as a graph
+{
+  const s = content("Graph engineering", "The newest rung: draw the workflow like a CI/CD pipeline, with stages, quality gates and approval gates.", "Buzzwords");
+  rungStrip(s, 4);
+  const y1 = 2.0;
+  flowNode(s, M, y1, 2.55, "AGENT", "Brainstorm", C.tint);
+  arrow(s, 3.2, y1 + 0.19, 0.35, 0.32, C.green);
+  flowNode(s, 3.6, y1, 2.55, "APPROVAL GATE", "Approve the design", C.amberTint);
+  arrow(s, 6.2, y1 + 0.19, 0.35, 0.32, C.green);
+  flowNode(s, 6.6, y1, 2.55, "AGENT", "Write the plan", C.tint);
+  arrow(s, 9.2, y1 + 0.19, 0.35, 0.32, C.green);
+  flowNode(s, 9.6, y1, 3.13, "APPROVAL GATE", "Review the plan, say go", C.amberTint);
+  const frameY = 3.15;
+  s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: M, y: frameY, w: 7.65, h: 1.75, fill: { color: C.white }, line: { color: C.green, width: 1.25, dashType: "dash" }, rectRadius: 0.08 });
+  s.addText("For each task, a fresh subagent", { x: M + 0.15, y: frameY + 0.05, w: 4, h: 0.3, fontFace: BF, fontSize: 11, bold: true, color: C.green, margin: 0 });
+  const y2 = frameY + 0.42;
+  flowNode(s, 0.8, y2, 2.1, "AGENT", "Implement", C.tint);
+  arrow(s, 2.95, y2 + 0.19, 0.35, 0.32, C.green);
+  flowNode(s, 3.35, y2, 2.0, "QUALITY GATE", "Spec review", C.soft);
+  arrow(s, 5.4, y2 + 0.19, 0.35, 0.32, C.green);
+  flowNode(s, 5.8, y2, 2.2, "QUALITY GATE", "Code review", C.soft);
+  const failY = y2 + 1.0;
+  line(s, 6.9, y2 + 0.7, 0, failY - y2 - 0.7, C.amber);
+  line(s, 1.85, failY, 5.05, 0, C.amber);
+  line(s, 1.85, y2 + 0.7, 0, failY - y2 - 0.7, C.amber, "begin");
+  s.addText("fail: back to Implement", { x: 2.0, y: failY - 0.3, w: 2.5, h: 0.28, fontFace: BF, fontSize: 11, italic: true, color: C.amber, margin: 0 });
+  line(s, 11.15, y1 + 0.7, 0, 0.3, C.green);
+  line(s, 4.6, y1 + 1.0, 6.55, 0, C.green);
+  line(s, 4.6, y1 + 1.0, 0, frameY - y1 - 1.0, C.green, "end");
+  arrow(s, 8.3, y2 + 0.19, 0.35, 0.32, C.green);
+  flowNode(s, 8.7, y2, 1.85, "QUALITY GATE", "Final review", C.soft);
+  arrow(s, 10.6, y2 + 0.19, 0.35, 0.32, C.green);
+  flowNode(s, 11.0, y2, 1.73, "APPROVAL GATE", "Merge, PR or keep", C.amberTint);
+  box(s, M, 5.2, 7.25, 1.45, C.tint);
+  s.addText(para("Each box is a **stage**; the loop lives inside one. A failed **quality gate** sends work back. At an **approval gate**, a person signs off.", { fontSize: 15, color: C.ink }), { x: M, y: 5.2, w: 7.25, h: 1.45, fontFace: BF, valign: "middle", margin: 14 });
+  box(s, M + 7.45, 5.2, CW - 7.45, 1.45, C.soft);
+  s.addText([
+    { text: "What it means for you", options: { bold: true, fontSize: 12, color: C.green, charSpacing: 1, breakLine: true } },
+    { text: "This is Superpowers, which you run after lunch. The amber boxes are your approval gates.", options: { fontSize: 14.5, color: C.ink, paraSpaceBefore: 4 } },
+  ], { x: M + 7.45, y: 5.2, w: CW - 7.45, h: 1.45, fontFace: BF, valign: "middle", margin: 14 });
+  s.addNotes("Graph engineering is the newest and least settled rung: mostly consultancies and tool vendors, no single famous author, so present it as an idea rather than an established discipline. The idea: once several agents, loops and people work together, make the workflow explicit. Nodes do the work: an agent, a check, a person. Edges decide what happens next, always or based on the result. Codacy's split: the graph decides the order and where work goes after each step; the loop decides when to retry or stop; the harness decides what the agent can touch. The diagram is Superpowers, simplified: brainstorming, then you approve the design; writing-plans, then you review the plan and say go; subagent-driven development runs a fresh implementer subagent per task, sequentially, with a spec-compliance review and a quality review, sending failures back; a final whole-branch review; and you choose how to finish. The loop sits inside the dashed box; the graph is the whole picture. Agentcraft is another small graph: builder, scope review, quality review, refactorer, verification, with a five-cycle cap. Sources: blog.codacy.com/graph-harnesses-and-loop-engineering-explained, github.com/obra/superpowers.");
+}
+
+// Six more terms
+{
+  const s = content("Six more terms, one sentence each", "You will hear these all the time. Here is all you need to know.", "Buzzwords");
+  const terms = [
+    ["Agent Skills", "A **runbook** for one kind of task: a SKILL.md the agent loads only when the task matches. An open standard."],
+    ["MCP", "Model Context Protocol: a standard **adapter** between agents and tools, like a **driver**. Jira, a database, a browser."],
+    ["RAG", "Retrieval-augmented generation: a **search** before the answer. Fetch the relevant documents, add them to the prompt."],
+    ["Worktrees", "A **feature branch** in its own folder, so two agents can work in parallel without overwriting each other."],
+    ["Subagents", "**Delegation** with a clear **interface**: hand over one task, get back a report. Its context stays out of yours."],
+    ["Spec-driven development", "**Requirements** and **acceptance criteria** first, then design, tasks and code. The spec is the source of truth."],
+  ];
+  terms.forEach(([t, d], i) => {
+    const x = M + (i % 3) * 4.09;
+    const y = 1.95 + Math.floor(i / 3) * 2.4;
+    box(s, x, y, 3.95, 2.25, C.tint);
+    s.addText([
+      { text: t, options: { bold: true, fontSize: 19, color: C.ink, breakLine: true } },
+      ...para(d, { fontSize: 16, color: C.ink, paraSpaceBefore: 6 }),
+    ], { x, y, w: 3.95, h: 2.25, fontFace: BF, valign: "top", margin: 10 });
+  });
+  s.addNotes("One sentence each. Agent Skills started at Anthropic and are now an open standard used by Copilot, VS Code, Codex, OpenCode and others (agentskills.io); we built some this morning. MCP (Anthropic, November 2024) is the common protocol for connecting agents to tools; we don't run MCP servers in our environment yet. RAG is a 2020 research term; coding agents mostly retrieve by searching files rather than with a vector database. Worktrees are plain git: each agent gets its own checkout and branch, which is what makes parallel agents and loops possible. Subagents start with a fresh context and only know what they are handed. Spec-driven development: GitHub Spec Kit is the best-known implementation.");
+}
+
+// Jagged intelligence
+{
+  const s = content("Jagged intelligence", "Brilliant and strangely dumb, sometimes in the same session.", "Buzzwords");
+  box(s, M, 1.95, 5.95, 2.4, C.tint);
+  s.addText([
+    { text: "Can do", options: { bold: true, fontSize: 13, color: C.green, charSpacing: 1, breakLine: true } },
+    { text: "Refactor a 100,000-line codebase. Find zero-day vulnerabilities.", options: { fontSize: 20, color: C.ink, paraSpaceBefore: 6 } },
+  ], { x: M, y: 1.95, w: 5.95, h: 2.4, fontFace: BF, valign: "middle", margin: 16 });
+  box(s, 6.78, 1.95, 5.95, 2.4, C.amberTint);
+  s.addText([
+    { text: "Also does", options: { bold: true, fontSize: 13, color: C.amber, charSpacing: 1, breakLine: true } },
+    { text: "Tells you to walk to the car wash 50 metres away, because it's close.", options: { fontSize: 20, color: C.ink, paraSpaceBefore: 6 } },
+  ], { x: 6.78, y: 1.95, w: 5.95, h: 2.4, fontFace: BF, valign: "middle", margin: 16 });
+  s.addText("Models are strongest where results are easy to verify and the labs trained hard: code, tests, maths. Outside that, they can fail in surprisingly basic ways. (Andrej Karpathy, Sequoia Ascent 2026)", { x: M, y: 4.5, w: CW, h: 0.7, fontFace: BF, fontSize: 14, italic: true, color: C.muted, margin: 0 });
+  forYouBand(s, "Don't judge the agent by its best moment. **Code review** matters most where **tests** can't reach: design, naming, product sense.");
+  s.addNotes("Karpathy's explanation for why models are so uneven: traditional software automates what you can specify; LLMs automate what you can verify, and labs train hardest where verification is easy and economically valuable. So the same model that can refactor a 100,000-line codebase or find zero-day vulnerabilities may tell you to walk to a car wash 50 metres away. His conclusion: to the extent models remain jagged, you need to be in the loop. He also notes agents still write code that 'works, but it is gross': bloated, copy-pasted, awkwardly abstracted. Source: karpathy.bearblog.dev/sequoia-ascent-2026.");
+}
+
+termSlide({
+  title: "Prompt debt",
+  lead: "Technical debt, written in plain English.",
+  what: "Every time the agent fails, someone adds a rule. Then a stronger rule. Soon the rules contradict each other: **dead code** and **duplication**, in your instructions.",
+  quote: "Important behaviour shouldn't live in instruction text alone. Move it into tests, types, permissions and checks.",
+  who: "The idea from Drew Breunig, The Problem is Prompt Debt, June 2026",
+  forYou: "**Refactor** AGENTS.md and your skills like code: delete dead rules, merge duplicates, and turn every hard rule you can into a **test** or a **lint rule**.",
+  notes: "Drew Breunig named the problem in June 2026 (dbreunig.com/2026/06/22/the-problem-is-prompt-debt.html). A system prompt starts short and clear, gets a new exception every time something fails, then the same warning in stronger words, until rules contradict each other and model-specific tweaks make it impossible to switch models. The fix is the same as for code debt: review and prune, and move important behaviour into mechanisms such as tests, types, permissions and evaluations. This connects to the instructions and skills we wrote this morning: keep them short.",
+});
+
+termSlide({
+  title: "Workslop",
+  lead: "When AI saves the sender time and costs the receiver more.",
+  what: "AI output that looks polished but nobody checked: the **unreviewed PR**, the document nobody read. The receiver ends up doing the real work.",
+  detail: "Its cousin, the “slop grenade”: tossing unverified AI output at a colleague and walking away.",
+  quote: "Measure the time to the final result and the burden on the receiver, not how much AI produced.",
+  who: "The idea from BetterUp Labs and Stanford, Harvard Business Review, 2025",
+  forYou: "**Review your own PR** before you request a review. If you didn't check it, don't put your name on it.",
+  notes: "'Workslop' was coined by researchers at BetterUp Labs and the Stanford Social Media Lab in Harvard Business Review in September 2025 (hbr.org/2025/09/ai-generated-workslop-is-destroying-productivity), and spread widely in 2026. 'Slop grenade' focuses on the act of sending it; it became widely known after Shopify's CEO used it in September 2026. In code, workslop is a 2,000-line PR nobody on the sending side has read. This is the 'you own the result' slide from the morning, said in the industry's words.",
+});
+
+// Lethal trifecta
+{
+  const s = content("The lethal trifecta", "A one-minute threat model: three things that are fine on their own, and dangerous together.", "Buzzwords");
+  const legs = ["Private data", "Untrusted content", "A way to send data out"];
+  const examples = ["Your repo, secrets, customer data", "A public issue, a web page, a tool result", "Internet access, a PR comment, an email"];
+  legs.forEach((leg, i) => {
+    const x = M + i * 3.2;
+    box(s, x, 1.95, 2.75, 2.2, C.tint);
+    s.addText([
+      { text: leg, options: { bold: true, fontSize: 19, color: C.ink, breakLine: true } },
+      { text: examples[i], options: { fontSize: 13, color: C.muted, paraSpaceBefore: 8 } },
+    ], { x, y: 1.95, w: 2.75, h: 2.2, fontFace: BF, valign: "middle", margin: 14 });
+    s.addText(i < 2 ? "+" : "=", { x: x + 2.75, y: 1.95, w: 0.45, h: 2.2, fontFace: HF, fontSize: 30, bold: true, color: C.green, align: "center", valign: "middle", margin: 0 });
+  });
+  box(s, M + 9.6, 1.95, CW - 9.6, 2.2, C.amber);
+  s.addText("Someone else can steer your agent into leaking your data", { x: M + 9.6, y: 1.95, w: CW - 9.6, h: 2.2, fontFace: BF, fontSize: 17, bold: true, color: C.white, valign: "middle", margin: 12 });
+  s.addText("Prompt injection: text the agent reads, such as a comment in an issue, quietly becomes instructions. “Lethal trifecta” is Simon Willison's term, June 2025.", { x: M, y: 4.35, w: CW, h: 0.7, fontFace: BF, fontSize: 14, italic: true, color: C.muted, margin: 0 });
+  forYouBand(s, "An agent with your repo, reading a public issue, with internet access, has all three. Apply **least privilege**: remove one leg. No secrets, no untrusted input, or no way out.");
+  s.addNotes("Simon Willison's lethal trifecta (simonwillison.net/2025/Jun/16/the-lethal-trifecta): an agent that has access to private data, is exposed to untrusted content, and can communicate externally can be tricked by prompt injection into sending the data to an attacker. Each leg alone is normal; all three together is the risk. The practical defence is to remove a leg for the task: run without secrets, avoid reading untrusted content, or cut external access. Relevant as soon as agents read issues, web pages or API results, and especially for unattended loops.");
+}
+
+// Closing quote
+{
+  const s = newSlide("Buzzwords", true);
+  s.addShape(pres.shapes.OVAL, { x: 9.6, y: 3.3, w: 4.2, h: 4.2, fill: { color: C.dark }, line: { color: C.lime, width: 2 } });
+  s.addText("“You can outsource your thinking, but you can't outsource your understanding.”", { x: M, y: 1.7, w: 10.2, h: 2.6, fontFace: HF, fontSize: 38, bold: true, color: C.white, valign: "middle", margin: 0 });
+  s.addText("A line Andrej Karpathy keeps coming back to, Sequoia Ascent 2026", { x: M, y: 4.4, w: 9, h: 0.5, fontFace: BF, fontSize: 18, color: C.lime, margin: 0 });
+  s.addNotes("End the section here. Whatever the next buzzword is, the constant is that you have to understand what the agents built in order to direct them. Karpathy quoted this line from a post he saw and says he keeps thinking about it: 'I am becoming the bottleneck of even knowing what we are trying to build, why it is worth doing, and how to direct my agents.' Source: karpathy.bearblog.dev/sequoia-ascent-2026.");
+}
+
 // Section: Toolbox
 {
   const s = section("The wider toolbox", "Not every task needs the coding agent", "Toolbox");
