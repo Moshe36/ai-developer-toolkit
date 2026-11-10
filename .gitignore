@@ -28,3 +28,6 @@ Thumbs.db
 # Local-only (proprietary license)
 skills/pptx/
 __pycache__/
+
+# Office lock files
+~$*

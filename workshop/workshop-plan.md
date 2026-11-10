@@ -4,6 +4,8 @@ This file preserves the workshop brainstorming context so a future conversation 
 
 **Canonical plan location:** `C:\Users\moshemoa\ai-developer-toolkit\workshop\workshop-plan.md`. The copy previously saved under Downloads is historical. Exercise design is progressing in a separate conversation; consult `exercises/workload-limit.md` for its current draft and approval status. Continue developing the teaching plan here, coordinating shared decisions rather than overwriting the exercise design.
 
+**Slide deck:** everything about the presentation (decisions, slide map, verified facts, how to rebuild, open placeholders) is in `deck-notes.md`. The deck is generated from `deck-src/build-deck.js`.
+
 ## 1. Purpose and confirmed direction
 
 The user is preparing a practical AI workshop for their enterprise development team, co-facilitated with their friend Tom.
