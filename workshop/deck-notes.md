@@ -37,6 +37,8 @@ User decisions about the deck, in order:
 - Section and closing slides: dark background with lime outline circles (the visual motif). No accent bars or underlines.
 - Amber/dashed boxes with the word PLACEHOLDER mark content still to add. Amber cards also mark warnings and "where you decide" checkpoints.
 - Helpers: `content`, `section`, `card`, `labelled`, `numberedRows`, `chip`, `darkBand`, `table`, `termTable`, `placeholder`, `fitImage` (supports `crop: { top, bottom, alignLeft }`), `arrow`, `circle`.
+- Every new slide about a topic opens with a lead line that says what the topic is, in one plain sentence, before any example, story or numbers. A slide that follows another one on the same term still restates it.
+- Titles name the subject itself ("The lethal trifecta", "Graph engineering"), never "How X works" or "What is X?".
 
 ## 3. Slide map (75 slides)
 

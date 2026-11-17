@@ -1164,13 +1164,13 @@ function listCard(s, x, title, sub, items, fill) {
 
 // The ladder
 {
-  const s = content("The “___ engineering” ladder", "Every few months the industry names a new layer. Each one wraps the one before; none replaces it.", "Buzzwords");
+  const s = content("The “___ engineering” ladder", "Each rung contains the one below it. What changes is the unit you design.", "Buzzwords");
   const steps = [
-    ["Prompt", "2023", "Write a clear **ticket**.", C.soft, C.ink, C.muted],
-    ["Context", "2025", "Hand over the **docs** and code it needs.", C.lime, C.ink, C.ink],
-    ["Harness", "Feb 2026", "**Coding standards**, **CI** and **quality gates**.", "7FA88F", C.white, C.white],
-    ["Loop", "Jun 2026", "Retry until the **acceptance criteria** pass.", C.green, C.white, "DCE8DE"],
-    ["Graph", "2026", "The **pipeline**: stages and **approval gates**.", C.dark, C.white, "A9C3B5"],
+    ["Prompt", "2023", "**One instruction**: write it clearly.", C.soft, C.ink, C.muted],
+    ["Context", "2025", "**One model call**: what it sees.", C.lime, C.ink, C.ink],
+    ["Harness", "Feb 2026", "**One agent run**: its tools, rules and checks.", "7FA88F", C.white, C.white],
+    ["Loop", "Jun 2026", "**Many runs**: who starts them, when they stop.", C.green, C.white, "DCE8DE"],
+    ["Graph", "Jul 2026", "**Many steps**: the route, fixed in code.", C.dark, C.white, "A9C3B5"],
   ];
   const stepW = 2.33;
   const gap = 0.12;
@@ -1186,12 +1186,12 @@ function listCard(s, x, title, sub, items, fill) {
       ...para(meaning, { fontSize: 13.5, color, paraSpaceBefore: 6 }),
     ], { x, y, w: stepW, h: 1.45, fontFace: BF, valign: "top", margin: 10 });
   });
-  s.addNotes("The backbone of this section. Prompt engineering (2023-24) was about wording. Context engineering (2025, named by Shopify's Tobi Lütke and popularised by Karpathy) is about what information the model has. Harness engineering (OpenAI, February 2026) is the environment around the model: tools, permissions, tests, checks. Loop engineering (June 2026, viral after Boris Cherny and Peter Steinberger) is designing the loop that prompts the agent instead of prompting it yourself. Graph engineering (later in 2026, mostly from consultancies and vendors) is connecting several loops into one workflow. The point to make: each layer wraps the previous one. You still need good prompts and good context inside a loop. Sources: blog.codacy.com/graph-harnesses-and-loop-engineering-explained, addyosmani.com/blog/loop-engineering.");
+  s.addNotes("The backbone of this section. The clearest way to tell the terms apart is the unit each one designs, as laid out in the August 2026 paper 'Loop Engineering: Building Blocks, Adoption, and Impact' (Treude, Baltes and others), where each layer subsumes the previous one. Prompt engineering: one instruction. Context engineering (June 2025, Tobi Lütke's term, popularised by Karpathy): everything the model sees in one call, such as AGENTS.md, files read and history. Harness engineering (OpenAI, February 2026): the layer around one agent run, such as skills, subagents, hooks, settings, MCP, tests and linters. Loop engineering (June 2026, Addy Osmani's name after posts by Boris Cherny and Peter Steinberger): many runs over time, with a trigger, a machine-checkable stop condition, state files, a verifier and a budget. Graph engineering (July 2026, after a Steinberger post; Hamel Husain's article named it): the route through many steps, written down as nodes and edges; LangChain's verdict is that it 'isn't a new idea', it is how LangGraph has worked since 2024. Be honest with the room: each new name is partly hype, and critics call loops 'a renamed cron job'. The ideas underneath are still worth knowing. Sources: arxiv.org/abs/2608.21884, openai.com/index/harness-engineering, addyosmani.com/blog/loop-engineering, langchain.com/blog/3-years-of-graph-engineering-with-langgraph.");
 }
 
 // Context engineering: what goes in, what stays out
 {
-  const s = content("Context engineering", "Not the magic words, but the right information. Like onboarding a new hire, on every single turn.", "Buzzwords");
+  const s = content("Context engineering", "Unit: one model call. What does the model see right now? The right information, not the magic words.", "Buzzwords");
   rungStrip(s, 1);
   listCard(s, M, "Give it", "What a new teammate would need", [
     "The **ticket**: goal and **acceptance criteria**",
@@ -1217,7 +1217,7 @@ function listCard(s, x, title, sub, items, fill) {
 
 // Harness engineering: guides and sensors
 {
-  const s = content("Harness engineering", "Agent = model + harness. The tool ships one harness; harness engineering is the one you build around it.", "Buzzwords");
+  const s = content("Harness engineering", "Unit: one agent run. What surrounds it? The tool ships a harness; you build the outer one around it.", "Buzzwords");
   rungStrip(s, 2);
   listCard(s, M, "Guides", "Like **coding standards** and **design docs**: steer it before it acts", [
     "AGENTS.md and SHARED.md: our **conventions**",
@@ -1238,7 +1238,7 @@ function listCard(s, x, title, sub, items, fill) {
     { text: "His team shipped about a million lines in five months, with zero lines written by hand.", options: { fontSize: 12.5, color: "A9C3B5", paraSpaceBefore: 10 } },
   ], { x: M + 7.45, y: 1.95, w: CW - 7.45, h: 3.15, fontFace: BF, valign: "middle", margin: 16 });
   forYouBand(s, "Guides alone: rules it never verifies. Sensors alone: the same bug, again and again. Treat a repeated mistake like a **postmortem** action item: add a guide or a sensor so it can't happen twice.");
-  s.addNotes("Two meanings of 'harness'. Every tool ships a built-in harness: its system prompt, tools and way of reading files; that is what we called the harness in the building-blocks slide. Harness engineering, as OpenAI named it in February 2026, is the outer harness you build around it for your codebase. Birgitta Böckeler (Thoughtworks, martinfowler.com, April 2026) splits it into guides, which steer the agent before it acts (AGENTS.md, skills, specs, language servers), and sensors, which let it correct itself after it acts (tests, type checks, linters, structural tests, review agents). Sensors work best when their output is written for the agent, for example lint messages that say how to fix the problem; OpenAI did exactly that with custom linters. Your job is the steering loop: whenever an issue happens more than once, improve a guide or a sensor. OpenAI's team: five months, about a million lines, 0 lines of manually written code, three engineers growing to seven; when the agent struggled, they asked what capability was missing and how to make it legible and enforceable for the agent. Everything on the left is something we set up this morning. Sources: openai.com/index/harness-engineering, martinfowler.com/articles/harness-engineering.html.");
+  s.addNotes("Two meanings of 'harness'. Every tool ships a built-in harness: its system prompt, tools and way of reading files; that is what we called the harness in the building-blocks slide. Harness engineering, as OpenAI named it in February 2026, is the outer harness you build around it for your codebase. Birgitta Böckeler (Thoughtworks, martinfowler.com, April 2026) splits it into guides, which steer the agent before it acts (AGENTS.md, skills, specs, language servers), and sensors, which let it correct itself after it acts (tests, type checks, linters, structural tests, review agents). Sensors work best when their output is written for the agent, for example lint messages that say how to fix the problem; OpenAI did exactly that with custom linters. Your job is the steering loop: whenever an issue happens more than once, improve a guide or a sensor. OpenAI's team: five months, about a million lines, 0 lines of manually written code, three engineers growing to seven; when the agent struggled, they asked what capability was missing and how to make it legible and enforceable for the agent. Everything on the left is something we set up this morning. Honest overlap: Böckeler calls the user harness 'a specific form of context engineering', and a 2026 study of 2,853 repositories found harness engineering in open source is 'mostly context engineering', because people write context files and rarely add executable checks. The difference is the sensors: context only steers, a harness also checks. Sources: openai.com/index/harness-engineering, martinfowler.com/articles/harness-engineering.html.");
 }
 
 function flowNode(s, x, y, w, kind, name, fill, color = C.ink, h = 0.7) {
@@ -1256,81 +1256,124 @@ function line(s, x, y, w, h, color, arrowAt) {
   s.addShape(pres.shapes.LINE, { x, y, w, h, line: l });
 }
 
-// Loop engineering: one loop, drawn
+// Loop engineering: many runs, started and stopped by a system
 {
-  const s = content("Loop engineering", "Like a CI pipeline for the agent: it keeps going until the acceptance criteria pass, or it escalates.", "Buzzwords");
+  const s = content("Loop engineering", "Unit: many runs over time. You stop being the one who starts each run; a system does it.", "Buzzwords");
   rungStrip(s, 3);
   box(s, M, 1.95, 7.25, 3.15, C.tint);
   const y = 2.2;
-  flowNode(s, 0.8, y, 1.6, "START", "Trigger", C.white);
+  flowNode(s, 0.8, y, 1.6, "TRIGGER", "Schedule or event", C.white);
   arrow(s, 2.45, y + 0.19, 0.35, 0.32, C.green);
-  flowNode(s, 2.85, y, 1.6, "AGENT", "Does the work", C.white);
+  flowNode(s, 2.85, y, 1.6, "ONE RUN", "Agent + harness", C.white);
   arrow(s, 4.5, y + 0.19, 0.35, 0.32, C.green);
-  flowNode(s, 4.9, y, 1.6, "CHECK", "Acceptance criteria", C.soft);
+  flowNode(s, 4.9, y, 1.6, "VERIFIER", "Stop condition met?", C.soft);
   arrow(s, 6.55, y + 0.19, 0.35, 0.32, C.green);
-  flowNode(s, 6.95, y, 0.75, "PASS", "Done", C.dark, C.white);
+  flowNode(s, 6.95, y, 0.75, "YES", "Done", C.dark, C.white);
   const retryY = 3.3;
   line(s, 5.4, y + 0.7, 0, retryY - y - 0.7, C.green);
   line(s, 3.65, retryY, 1.75, 0, C.green);
   line(s, 3.65, y + 0.7, 0, retryY - y - 0.7, C.green, "begin");
-  s.addText(para("fail: retry, up to a **retry limit**", { fontSize: 11.5, italic: true, color: C.green }), { x: 3.75, y: retryY + 0.03, w: 2.6, h: 0.3, fontFace: BF, margin: 0 });
+  s.addText("no: run again, within a budget", { x: 3.75, y: retryY + 0.03, w: 2.6, h: 0.3, fontFace: BF, fontSize: 11.5, italic: true, color: C.green, margin: 0 });
   line(s, 6.1, y + 0.7, 0, 3.95 - y - 0.7, C.amber, "end");
-  flowNode(s, 5.1, 3.95, 2.6, "STUCK", "Escalate to you", C.amberTint);
+  flowNode(s, 5.1, 3.95, 2.6, "STUCK OR RISKY", "Escalate to a person", C.amberTint);
   s.addText([
-    ...para("**Trigger:** your prompt, a schedule like a **cron job**, a new issue.", { fontSize: 12, color: C.ink }, true),
-    ...para("**Memory:** a progress file in the repo, so the next run knows what's done.", { fontSize: 12, color: C.ink }),
+    ...para("**Trigger:** nightly, a failing build, a new issue.", { fontSize: 12, color: C.ink }, true),
+    ...para("**State:** a progress file in the repo. The agent forgets; the repo doesn't.", { fontSize: 12, color: C.ink }),
   ], { x: 0.8, y: 3.75, w: 4.15, h: 1.2, fontFace: BF, valign: "middle", margin: 0 });
   box(s, M + 7.45, 1.95, CW - 7.45, 3.15, C.dark);
   s.addText([
-    { text: "“I don't prompt Claude anymore. I have loops running that prompt Claude… My job is to write loops.”", options: { fontSize: 16, italic: true, color: C.white, breakLine: true } },
-    { text: "Boris Cherny, head of Claude Code, June 2026", options: { fontSize: 12, color: C.lime, breakLine: true, paraSpaceBefore: 10 } },
-    { text: "Peter Steinberger (OpenClaw), the same week: “You should be designing loops that prompt your agents.”", options: { fontSize: 12.5, color: "A9C3B5", paraSpaceBefore: 10 } },
+    { text: "“Loop engineering is replacing yourself as the person who prompts the agent. You design the system that does it instead.”", options: { fontSize: 16, italic: true, color: C.white, breakLine: true } },
+    { text: "Addy Osmani, who named it, June 2026", options: { fontSize: 12, color: C.lime, breakLine: true, paraSpaceBefore: 10 } },
+    { text: "Sparked by Boris Cherny (Claude Code): “My job is to write loops.” Critics: “a renamed cron job.”", options: { fontSize: 12.5, color: "A9C3B5", paraSpaceBefore: 10 } },
   ], { x: M + 7.45, y: 1.95, w: CW - 7.45, h: 3.15, fontFace: BF, valign: "middle", margin: 16 });
-  forYouBand(s, "You run two loops today: Superpowers reviews every task before the next one, and Agentcraft stops after five cycles. Building your own? Write **acceptance criteria** it can't fake, set a **retry limit**, and decide where it **escalates**.");
-  s.addNotes("Loop engineering went viral in June 2026 after Boris Cherny (head of Claude Code) and Peter Steinberger (OpenClaw) posted about it; Andrew Ng called it a hot buzzphrase. The Cherny quote is as reported by Addy Osmani. Walk the diagram: something triggers the agent (you, a schedule, a new issue); it works; a check it cannot talk its way past decides: pass means done, fail means try again, and after a few failed attempts it stops and hands over to a person. Progress lives in a file in the repo, because the agent forgets between runs and the repo does not. Codacy's version: the loop decides when the agent retries, escalates or stops; in their own agents, retries beyond about two rounds stopped helping and started creating new problems. Osmani: keep the maker away from the checker, because the model that wrote the code grades its own homework too kindly. Products now ship this: /loop and /goal in Claude Code, Automations and /goal in Codex. Today's loops: Superpowers runs a fresh implementer per task with a spec review and a quality review before moving on; Agentcraft runs builder, reviews, refactorer and verification with a five-cycle cap. 'Build the loop. Stay the engineer.' (Osmani). Sources: addyosmani.com/blog/loop-engineering, blog.codacy.com/graph-harnesses-and-loop-engineering-explained, x.com/AndrewYNg/status/2071988145667928442.");
+  forYouBand(s, "Design the **verifier** first: a loop satisfies the check you wrote, not the goal behind it. Start **report-only**, such as a nightly run that opens an issue, and allow unattended changes only once the verifier has earned trust.");
+  s.addNotes("Loop engineering is about many agent runs over time, not the agent's own tool-calling loop inside one run. The definition the sources converge on: the developer stops deciding what the agent does next and designs the system that decides instead. Addy Osmani named it on 7 June 2026: 'Loop engineering is replacing yourself as the person who prompts the agent. You design the system that does it instead.' It followed Boris Cherny's interview ('I don't prompt Claude anymore. I have loops that are running... My job is to write loops') and Peter Steinberger's post ('You should be designing loops that prompt your agents'). The August 2026 paper by Treude, Baltes and others gives the working definition: automated control structures that repeatedly invoke coding agents, triggered on a schedule or by events, with each run bounded by a machine-checkable stop condition; a good loop persists state across runs, verifies results independently of the implementing agent, bounds cost, restricts what an unattended run may change, and defines when humans step in. Tools ship it now: /loop and /goal in Claude Code, /goal in Codex. The honest part: critics call it 'a renamed cron job'; Gergely Orosz found most real examples are cron jobs and event triggers with a smarter worker, and the paper found it in 217 of 36,710 repositories, mostly automatic pull-request review. Practical advice from the sources: design the verifier first (André Lindenberg: a loop 'satisfies the gate you wrote'), start report-only and raise autonomy only when the verifier has proven reliable (Cobus Greyling's readiness levels), and watch costs and review fatigue. Sources: addyosmani.com/blog/loop-engineering, arxiv.org/abs/2608.21884.");
 }
 
-// Graph engineering: Superpowers as a graph
+// Graph engineering: the route, written down
 {
-  const s = content("Graph engineering", "The newest rung: draw the workflow like a CI/CD pipeline, with stages, quality gates and approval gates.", "Buzzwords");
+  const s = content("Graph engineering", "Unit: many steps. Who decides what runs next: the model, or your code?", "Buzzwords");
   rungStrip(s, 4);
-  const y1 = 2.0;
-  flowNode(s, M, y1, 2.55, "AGENT", "Brainstorm", C.tint);
-  arrow(s, 3.2, y1 + 0.19, 0.35, 0.32, C.green);
-  flowNode(s, 3.6, y1, 2.55, "APPROVAL GATE", "Approve the design", C.amberTint);
-  arrow(s, 6.2, y1 + 0.19, 0.35, 0.32, C.green);
-  flowNode(s, 6.6, y1, 2.55, "AGENT", "Write the plan", C.tint);
-  arrow(s, 9.2, y1 + 0.19, 0.35, 0.32, C.green);
-  flowNode(s, 9.6, y1, 3.13, "APPROVAL GATE", "Review the plan, say go", C.amberTint);
-  const frameY = 3.15;
-  s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: M, y: frameY, w: 7.65, h: 1.75, fill: { color: C.white }, line: { color: C.green, width: 1.25, dashType: "dash" }, rectRadius: 0.08 });
-  s.addText("For each task, a fresh subagent", { x: M + 0.15, y: frameY + 0.05, w: 4, h: 0.3, fontFace: BF, fontSize: 11, bold: true, color: C.green, margin: 0 });
-  const y2 = frameY + 0.42;
-  flowNode(s, 0.8, y2, 2.1, "AGENT", "Implement", C.tint);
-  arrow(s, 2.95, y2 + 0.19, 0.35, 0.32, C.green);
-  flowNode(s, 3.35, y2, 2.0, "QUALITY GATE", "Spec review", C.soft);
-  arrow(s, 5.4, y2 + 0.19, 0.35, 0.32, C.green);
-  flowNode(s, 5.8, y2, 2.2, "QUALITY GATE", "Code review", C.soft);
-  const failY = y2 + 1.0;
-  line(s, 6.9, y2 + 0.7, 0, failY - y2 - 0.7, C.amber);
-  line(s, 1.85, failY, 5.05, 0, C.amber);
-  line(s, 1.85, y2 + 0.7, 0, failY - y2 - 0.7, C.amber, "begin");
-  s.addText("fail: back to Implement", { x: 2.0, y: failY - 0.3, w: 2.5, h: 0.28, fontFace: BF, fontSize: 11, italic: true, color: C.amber, margin: 0 });
-  line(s, 11.15, y1 + 0.7, 0, 0.3, C.green);
-  line(s, 4.6, y1 + 1.0, 6.55, 0, C.green);
-  line(s, 4.6, y1 + 1.0, 0, frameY - y1 - 1.0, C.green, "end");
-  arrow(s, 8.3, y2 + 0.19, 0.35, 0.32, C.green);
-  flowNode(s, 8.7, y2, 1.85, "QUALITY GATE", "Final review", C.soft);
-  arrow(s, 10.6, y2 + 0.19, 0.35, 0.32, C.green);
-  flowNode(s, 11.0, y2, 1.73, "APPROVAL GATE", "Merge, PR or keep", C.amberTint);
+  const y = 2.45;
+  const label = (x, yy, w, text, color = C.muted) => s.addText(text, { x, y: yy, w, h: 0.26, fontFace: BF, fontSize: 10.5, italic: true, color, align: "center", margin: 0 });
+  flowNode(s, M, y, 2.05, "LLM CALL", "Classify the issue", C.tint);
+  arrow(s, 2.7, y + 0.19, 0.4, 0.32, C.green);
+  label(2.55, y - 0.3, 0.7, "bug");
+  flowNode(s, 3.15, y, 2.2, "AGENT", "Fix it (a full run)", C.tint);
+  arrow(s, 5.4, y + 0.19, 0.4, 0.32, C.green);
+  flowNode(s, 5.85, y, 1.9, "CODE", "Run the tests", C.soft);
+  arrow(s, 7.8, y + 0.19, 0.4, 0.32, C.green);
+  label(7.65, y - 0.3, 0.7, "pass");
+  flowNode(s, 8.25, y, 2.2, "HUMAN", "Approve the PR", C.amberTint);
+  arrow(s, 10.5, y + 0.19, 0.4, 0.32, C.green);
+  flowNode(s, 10.95, y, 1.78, "CODE", "Merge", C.dark, C.white);
+  const failY = y + 1.15;
+  line(s, 6.8, y + 0.7, 0, failY - y - 0.7, C.amber);
+  line(s, 4.25, failY, 2.55, 0, C.amber);
+  line(s, 4.25, y + 0.7, 0, failY - y - 0.7, C.amber, "begin");
+  s.addText("fail: back to the agent, at most twice", { x: 4.35, y: failY + 0.03, w: 3.4, h: 0.28, fontFace: BF, fontSize: 11, italic: true, color: C.amber, margin: 0 });
+  line(s, 1.6, y + 0.7, 0, 0.95, C.green, "end");
+  label(1.65, y + 0.95, 1.1, "not a bug", C.muted);
+  flowNode(s, M, y + 1.65, 2.05, "LLM CALL", "Reply and close", C.tint);
   box(s, M, 5.2, 7.25, 1.45, C.tint);
-  s.addText(para("Each box is a **stage**; the loop lives inside one. A failed **quality gate** sends work back. At an **approval gate**, a person signs off.", { fontSize: 15, color: C.ink }), { x: M, y: 5.2, w: 7.25, h: 1.45, fontFace: BF, valign: "middle", margin: 14 });
+  s.addText([
+    ...para("In a **loop**, the agent picks its own route to the goal. In a **graph**, you fix the route and the checkpoints in code, like a **state machine**.", { fontSize: 14.5, color: C.ink }, true),
+    { text: "“Graph engineering isn't a new idea. It's the latest name for a well established approach to building reliable agents.” LangChain, July 2026", options: { fontSize: 11.5, italic: true, color: C.muted, paraSpaceBefore: 6 } },
+  ], { x: M, y: 5.2, w: 7.25, h: 1.45, fontFace: BF, valign: "middle", margin: 14 });
   box(s, M + 7.45, 5.2, CW - 7.45, 1.45, C.soft);
   s.addText([
     { text: "What it means for you", options: { bold: true, fontSize: 12, color: C.green, charSpacing: 1, breakLine: true } },
-    { text: "This is Superpowers, which you run after lunch. The amber boxes are your approval gates.", options: { fontSize: 14.5, color: C.ink, paraSpaceBefore: 4 } },
+    { text: "Superpowers is a route the agent chooses to follow. A graph enforces it. Use one when the order must hold every time.", options: { fontSize: 14, color: C.ink, paraSpaceBefore: 4 } },
   ], { x: M + 7.45, y: 5.2, w: CW - 7.45, h: 1.45, fontFace: BF, valign: "middle", margin: 14 });
-  s.addNotes("Graph engineering is the newest and least settled rung: mostly consultancies and tool vendors, no single famous author, so present it as an idea rather than an established discipline. The idea: once several agents, loops and people work together, make the workflow explicit. Nodes do the work: an agent, a check, a person. Edges decide what happens next, always or based on the result. Codacy's split: the graph decides the order and where work goes after each step; the loop decides when to retry or stop; the harness decides what the agent can touch. The diagram is Superpowers, simplified: brainstorming, then you approve the design; writing-plans, then you review the plan and say go; subagent-driven development runs a fresh implementer subagent per task, sequentially, with a spec-compliance review and a quality review, sending failures back; a final whole-branch review; and you choose how to finish. The loop sits inside the dashed box; the graph is the whole picture. Agentcraft is another small graph: builder, scope review, quality review, refactorer, verification, with a five-cycle cap. Sources: blog.codacy.com/graph-harnesses-and-loop-engineering-explained, github.com/obra/superpowers.");
+  s.addNotes("Graph engineering is about who decides the next step. An agent decides its own next step, which suits open-ended work. A graph writes the control flow down: nodes do the work (plain code, one LLM call, a tool call, a human approval, or a whole agent run with its own harness), edges decide what runs next, some fixed and some conditional on the result, and a shared state travels along them. LangChain: 'You can think of this as a state machine', and 'a loop is just a directed, cyclic graph'. The diagram shows all node kinds: an LLM call classifies the issue and a conditional edge routes it; a full coding-agent run fixes bugs; plain code runs the tests and sends failures back at most twice; a person approves before the merge. Where the name came from: Itamar Friedman (CodiumAI) talked about 'flow (/graph) engineering' in 2024 after the AlphaCodium paper; Josh Simmons proposed 'graph engineering' on 4 July 2026; Peter Steinberger asked on 18 July 2026 'Are we still talking loops or did we shift to graphs yet?' and Hamel Husain's article named it hours later. Both later admitted it was partly a joke about how fast the field mints names. Harrison Chase asked whether it was 'basically just langgraph?', and LangChain wrote that it 'isn't a new idea'. Anthropic made the same distinction in 2024: workflows run models and tools through predefined code paths; agents direct their own process. For the room: Superpowers is a set of skills that the agent chooses to follow, so the route lives in instructions; a graph, for example in LangGraph, enforces the route in code. Sources: langchain.com/blog/3-years-of-graph-engineering-with-langgraph, anthropic.com/research/building-effective-agents.");
+}
+
+// What is a graph: nodes, edges, state
+{
+  const s = content("What is a graph?", "A flowchart that actually runs. You write the boxes and the arrows in code; the LLM only works inside some of the boxes.", "Buzzwords");
+  rungStrip(s, 4);
+  const parts = [
+    ["Node", "A step that does work: plain code, one LLM call, a whole agent run, or a person approving."],
+    ["Edge", "The arrow to the next step. Fixed (“after implement, always test”) or conditional (“if tests fail, go back”)."],
+    ["State", "The data carried from step to step: the plan, the diff, the test results, the retry count."],
+  ];
+  parts.forEach(([t, d], i) => {
+    const y = 1.95 + i * 1.07;
+    box(s, M, y, 4.55, 0.97, C.tint);
+    s.addText([
+      { text: t, options: { bold: true, fontSize: 16, color: C.green, breakLine: true } },
+      { text: d, options: { fontSize: 12.5, color: C.ink, paraSpaceBefore: 2 } },
+    ], { x: M, y, w: 4.55, h: 0.97, fontFace: BF, valign: "middle", margin: 10 });
+  });
+
+  const px = M + 4.7, pw = CW - 4.7;
+  box(s, px, 1.95, pw, 3.11, C.soft);
+  s.addText("Example: every feature, the same route", { x: px + 0.2, y: 2.02, w: pw - 0.4, h: 0.3, fontFace: BF, fontSize: 12, bold: true, color: C.green, margin: 0 });
+  const nodes = [["LLM", "Plan"], ["AGENT", "Implement"], ["CODE", "Run tests"], ["HUMAN", "Approve"], ["CODE", "Merge"]];
+  const gap = 0.3, nw = (pw - 0.4 - 4 * gap) / 5, ny = 2.75;
+  const nx = (i) => px + 0.2 + i * (nw + gap);
+  nodes.forEach(([k, n], i) => {
+    flowNode(s, nx(i), ny, nw, k, n, k === "HUMAN" ? C.amberTint : C.white);
+    if (i < nodes.length - 1) line(s, nx(i) + nw, ny + 0.35, gap, 0, C.green, "end");
+  });
+  s.addText("pass", { x: nx(2) + nw - 0.1, y: ny + 0.03, w: gap + 0.2, h: 0.25, fontFace: BF, fontSize: 10, italic: true, color: C.green, align: "center", margin: 0 });
+  const backY = ny + 1.05;
+  line(s, nx(2) + nw / 2, ny + 0.7, 0, backY - ny - 0.7, C.amber);
+  line(s, nx(1) + nw / 2, backY, nx(2) - nx(1), 0, C.amber);
+  line(s, nx(1) + nw / 2, ny + 0.7, 0, backY - ny - 0.7, C.amber, "begin");
+  s.addText("fail: back to implement (max 2)", { x: nx(1) + nw / 2, y: backY + 0.03, w: 2.6, h: 0.26, fontFace: BF, fontSize: 10.5, italic: true, color: C.amber, margin: 0 });
+  box(s, px + 0.2, 4.4, pw - 0.4, 0.5, C.white);
+  s.addText([
+    { text: "STATE  ", options: { bold: true, fontSize: 10.5, color: C.muted, charSpacing: 1 } },
+    { text: "plan · diff · test results · retry count, passed along every edge", options: { fontSize: 12, color: C.ink } },
+  ], { x: px + 0.2, y: 4.4, w: pw - 0.4, h: 0.5, fontFace: BF, valign: "middle", margin: 10 });
+
+  box(s, M, 5.3, CW, 1.35, C.dark);
+  s.addText([
+    { text: "You already know graphs", options: { bold: true, fontSize: 12, color: C.lime, charSpacing: 1, breakLine: true } },
+    ...para("A CI workflow with **needs:** and **if:**, a **state machine**, a Jira workflow. Graph engineering puts LLMs inside some boxes. The point: **your code decides the next step, not the model.** In an agent or a loop, the model picks its own route.", { fontSize: 15, color: C.white, paraSpaceBefore: 4 }),
+  ], { x: M, y: 5.3, w: CW, h: 1.35, fontFace: BF, valign: "middle", margin: 14 });
+  s.addNotes("Define the word before comparing it with anything. A graph is a flowchart that runs. Three parts. Nodes are the steps that do work: a node can be plain code, a single LLM call, a tool call, a full agent run with its own harness, or a human approval. Edges decide what runs next: some are fixed (after implement, always run tests), some are conditional on the result (if the tests fail, go back to implement; if they pass, go on). State is the shared data that travels along the edges: the plan, the diff, the test results, a retry counter. LangChain: 'You can think of this as a state machine.' Walk through the example: an LLM call writes the plan, an agent implements, plain code runs the tests and routes the result, failures go back to implement at most twice, a person approves, code merges. The model never chooses the route; it cannot skip the tests because there is no arrow around them. Engineers already know graphs: a GitHub Actions workflow with needs: and if:, a state machine, a Jira ticket workflow. Graph engineering is the same thing with LLMs inside some of the boxes. The contrast: in an agent, and in a loop around an agent, the model decides its own next step; in a graph, your code does. Anthropic made the same split in 2024: workflows follow predefined code paths, agents direct their own process. The name is new (July 2026) and LangChain admits it 'isn't a new idea'. Sources: langchain.com/blog/3-years-of-graph-engineering-with-langgraph, anthropic.com/research/building-effective-agents.");
 }
 
 // Six more terms
@@ -1374,15 +1417,46 @@ function line(s, x, y, w, h, color, arrowAt) {
   s.addNotes("Karpathy's explanation for why models are so uneven: traditional software automates what you can specify; LLMs automate what you can verify, and labs train hardest where verification is easy and economically valuable. So the same model that can refactor a 100,000-line codebase or find zero-day vulnerabilities may tell you to walk to a car wash 50 metres away. His conclusion: to the extent models remain jagged, you need to be in the loop. He also notes agents still write code that 'works, but it is gross': bloated, copy-pasted, awkwardly abstracted. Source: karpathy.bearblog.dev/sequoia-ascent-2026.");
 }
 
-termSlide({
-  title: "Prompt debt",
-  lead: "Technical debt, written in plain English.",
-  what: "Every time the agent fails, someone adds a rule. Then a stronger rule. Soon the rules contradict each other: **dead code** and **duplication**, in your instructions.",
-  quote: "Important behaviour shouldn't live in instruction text alone. Move it into tests, types, permissions and checks.",
-  who: "The idea from Drew Breunig, The Problem is Prompt Debt, June 2026",
-  forYou: "**Refactor** AGENTS.md and your skills like code: delete dead rules, merge duplicates, and turn every hard rule you can into a **test** or a **lint rule**.",
-  notes: "Drew Breunig named the problem in June 2026 (dbreunig.com/2026/06/22/the-problem-is-prompt-debt.html). A system prompt starts short and clear, gets a new exception every time something fails, then the same warning in stronger words, until rules contradict each other and model-specific tweaks make it impossible to switch models. The fix is the same as for code debt: review and prune, and move important behaviour into mechanisms such as tests, types, permissions and evaluations. This connects to the instructions and skills we wrote this morning: keep them short.",
-});
+// Prompt debt: how it builds, what it costs, how to pay it down
+{
+  const s = content("Prompt debt", "Technical debt in plain English. Every quick fix becomes a rule, until nobody dares touch the prompt.", "Buzzwords");
+  const colW = (CW - 0.3) / 3;
+  const col = (i) => M + i * (colW + 0.15);
+  const head = (i, title, color = C.ink) => s.addText(title, { x: col(i) + 0.15, y: 2.0, w: colW - 0.3, h: 0.4, fontFace: BF, fontSize: 18, bold: true, color, margin: 0 });
+
+  box(s, col(0), 1.95, colW, 3.15, C.tint);
+  head(0, "How it builds");
+  const rules = [
+    ["Return the answer as JSON.", C.ink, false],
+    ["IMPORTANT: always return JSON.", C.ink, false],
+    ["CRITICAL: you MUST return valid JSON.", C.amber, true],
+    ["MANDATORY: NEVER answer without JSON!!", C.amber, true],
+  ];
+  s.addText(rules.map(([t, c, b], i) => ({ text: t, options: { fontFace: "Consolas", fontSize: 11, color: c, bold: b, breakLine: i < rules.length - 1, paraSpaceBefore: i ? 4 : 0 } })),
+    { x: col(0) + 0.15, y: 2.45, w: colW - 0.3, h: 1.25, fill: { color: C.white }, valign: "middle", margin: 8 });
+  s.addText(para("Real example: Claude Code's system prompt tells the model **seven times** to batch its tool calls. Breunig calls this **fighting the weights**.", { fontSize: 12, color: C.ink }),
+    { x: col(0) + 0.15, y: 3.8, w: colW - 0.3, h: 1.2, fontFace: BF, valign: "middle", margin: 0 });
+
+  box(s, col(1), 1.95, colW, 3.15, C.soft);
+  head(1, "What it costs");
+  s.addText([
+    ...para("**Slow iteration.** Each new rule can break an old one, so every edit risks a **regression**.", { fontSize: 13, color: C.ink }, true),
+    ...para("**No collaboration.** Nobody knows why a rule is there, so nobody deletes it. Only one person can touch the prompt.", { fontSize: 13, color: C.ink, paraSpaceBefore: 8 }, true),
+    ...para("**Model lock-in.** The hacks were tuned to one model; a newer model breaks them, so teams stay on old ones.", { fontSize: 13, color: C.ink, paraSpaceBefore: 8 }),
+  ], { x: col(1) + 0.15, y: 2.45, w: colW - 0.3, h: 2.55, fontFace: BF, valign: "top", margin: 0 });
+
+  box(s, col(2), 1.95, colW, 3.15, C.dark);
+  head(2, "How to pay it down", C.white);
+  s.addText([
+    ...para("**Write checks, not more rules:** tests, evals and types that pass or fail.", { fontSize: 13, color: C.white }, true),
+    ...para("**Split the task** into small, checkable steps instead of one giant prompt.", { fontSize: 13, color: C.white, paraSpaceBefore: 8 }, true),
+    { text: "“Natural language was never meant to be a specification language for engineering.”", options: { fontSize: 12.5, italic: true, color: C.lime, paraSpaceBefore: 12, breakLine: true } },
+    { text: "Drew Breunig, The Problem is Prompt Debt, June 2026", options: { fontSize: 10.5, color: "A9C3B5", paraSpaceBefore: 4 } },
+  ], { x: col(2) + 0.15, y: 2.45, w: colW - 0.3, h: 2.55, fontFace: BF, valign: "top", margin: 0 });
+
+  forYouBand(s, "Your AGENTS.md and skills collect debt too. **Smells:** the same rule twice, rules in CAPS, rules nobody can explain. Delete them, or turn them into a **test**, a **lint rule** or a **hook**.");
+  s.addNotes("Drew Breunig named prompt debt in June 2026 ('The Problem is Prompt Debt'; republished by O'Reilly). How it builds: a prompt starts short; each time users flag an error, a rule is added; if the behaviour persists, the rule is repeated in stronger words. The JSON lines on the slide are illustrative, but the pattern is real: Breunig and Srihari Sriraman analysed coding-agent system prompts and found every one had repeated instructions and all-caps demands; Claude Code tells the model seven times to return multiple tool calls in one response; ChatGPT's image prompt once told the model eight times not to reply after an image. He calls it 'fighting the weights': you repeat a rule because the behaviour you want goes against how the model was trained. Why it gets brittle: unrelated words in a prompt change the output in ways you can't predict, so each new rule can change how an old one is read. The three costs, in his words: it slows iteration (you're afraid to touch the prompt), it blocks collaboration (another person's prompt 'may look completely random... But it works, so I don't want to touch it'), and it locks you to a model (Datadog found GPT-4o still the most-used model in traffic in March 2026, after it was retired from ChatGPT). How to pay it down: specify behaviour with measurements, not prose (evals, metrics, typed specs, tests); split tasks into small evaluable steps; treat prompts as perishable; in production apps, tools such as DSPy and GEPA search for the prompt automatically against your evals. Smells he lists: repeated instructions, one-off edge-case patches, increasingly desperate wording, prompts only one person may edit, and being stuck on an old model. For this room: the same applies to AGENTS.md and skills. Sources: dbreunig.com/2026/06/22/the-problem-is-prompt-debt.html, oreilly.com/radar/prompt-debt-and-fighting-the-weights.");
+}
 
 termSlide({
   title: "Workslop",
@@ -1393,6 +1467,147 @@ termSlide({
   who: "The idea from BetterUp Labs and Stanford, Harvard Business Review, 2025",
   forYou: "**Review your own PR** before you request a review. If you didn't check it, don't put your name on it.",
   notes: "'Workslop' was coined by researchers at BetterUp Labs and the Stanford Social Media Lab in Harvard Business Review in September 2025 (hbr.org/2025/09/ai-generated-workslop-is-destroying-productivity), and spread widely in 2026. 'Slop grenade' focuses on the act of sending it; it became widely known after Shopify's CEO used it in September 2026. In code, workslop is a 2,000-line PR nobody on the sending side has read. This is the 'you own the result' slide from the morning, said in the industry's words.",
+});
+
+// Workslop: definition, numbers, what it looks like in code
+{
+  const s = content("What workslop looks like", "Work that looks finished, but isn't. The sender saves time; the receiver pays for it.", "Buzzwords");
+  const colW = (CW - 0.3) / 3;
+  const col = (i) => M + i * (colW + 0.15);
+  const head = (i, title, color = C.ink) => s.addText(title, { x: col(i) + 0.15, y: 2.0, w: colW - 0.3, h: 0.4, fontFace: BF, fontSize: 18, bold: true, color, margin: 0 });
+
+  box(s, col(0), 1.95, colW, 3.15, C.dark);
+  head(0, "The definition", C.white);
+  s.addText([
+    { text: "“AI generated work content that masquerades as good work, but lacks the substance to meaningfully advance a given task.”", options: { fontSize: 15, italic: true, color: C.white, breakLine: true } },
+    { text: "Kate Niederhoffer (BetterUp Labs), Jeff Hancock (Stanford) and others, Harvard Business Review, September 2025", options: { fontSize: 11, color: C.lime, paraSpaceBefore: 10 } },
+  ], { x: col(0) + 0.15, y: 2.45, w: colW - 0.3, h: 2.55, fontFace: BF, valign: "top", margin: 0 });
+
+  box(s, col(1), 1.95, colW, 3.15, C.tint);
+  head(1, "How common");
+  const stats = [["40%", "received workslop in the last month"], ["1h 56m", "to deal with each case"], ["53%", "admit sending some themselves"]];
+  stats.forEach(([n, t], i) => {
+    s.addText([
+      { text: n, options: { bold: true, fontSize: 22, color: C.green, breakLine: true } },
+      { text: t, options: { fontSize: 12, color: C.ink } },
+    ], { x: col(1) + 0.15, y: 2.45 + i * 0.75, w: colW - 0.3, h: 0.72, fontFace: BF, valign: "top", margin: 0 });
+  });
+  s.addText("Survey of 1,150 US desk workers, self-reported.", { x: col(1) + 0.15, y: 4.7, w: colW - 0.3, h: 0.3, fontFace: BF, fontSize: 10, italic: true, color: C.muted, margin: 0 });
+
+  box(s, col(2), 1.95, colW, 3.15, C.amberTint);
+  head(2, "In our work, it looks like");
+  const items = [
+    "A big **PR** the author never read",
+    "**Tests** that pass but check nothing",
+    "A PR description that just restates the diff",
+    "A **code review** comment pasted from a chatbot",
+    "**Docs** that don't match the code",
+  ];
+  s.addText(items.flatMap((it, i) => para(it, { bullet: { indent: 14 }, fontSize: 13, color: C.ink, paraSpaceBefore: i ? 6 : 0 }, i < items.length - 1)),
+    { x: col(2) + 0.15, y: 2.45, w: colW - 0.3, h: 2.55, fontFace: BF, valign: "top", margin: 0 });
+
+  forYouBand(s, "Before you send it, ask: did I **read** it, did I **run** it, and could I **explain** it? If not, it's workslop, whoever wrote it.");
+  s.addNotes("Workslop was named in Harvard Business Review on 22 September 2025 ('AI-Generated Workslop Is Destroying Productivity') by Kate Niederhoffer, Gabriella Rosen Kellerman, Angela Lee, Alex Liebscher, Kristina Rapuano and Jeffrey T. Hancock (BetterUp Labs and the Stanford Social Media Lab). Their definition, word for word: 'AI generated work content that masquerades as good work, but lacks the substance to meaningfully advance a given task.' It shifts the work downstream: the receiver has to interpret, check and often redo it. Numbers from their survey of 1,150 full-time US desk workers: 40% received workslop in the last month; each case took on average 1 hour 56 minutes to deal with; 53% admitted that at least some of what they send may be workslop; respondents estimated 15.4% of the work they receive is workslop; the researchers estimate an 'invisible tax' of $186 per employee per month. Be honest about the limits: the figures are self-reported, US only, not peer reviewed, and BetterUp sells coaching services. Treat them as a signal, not a precise cost. For developers, workslop is the unread PR, tests that assert nothing, a description that only restates the diff, a pasted review comment, docs that drift from the code. The rule for the room: read it, run it, be able to explain it before you send it. Sources: hbr.org/2025/09/ai-generated-workslop-is-destroying-productivity, betterup.com/workslop.");
+}
+
+// Three-column topic slide: { title, lead, cols: [{ title, fill, dark, body: [para strings] , quote?, who? }], forYou, notes }
+function threeColSlide(o) {
+  const s = content(o.title, o.lead, o.section || "Buzzwords");
+  const colW = (CW - 0.3) / 3;
+  o.cols.forEach((c, i) => {
+    const x = M + i * (colW + 0.15);
+    const ink = c.dark ? C.white : C.ink;
+    box(s, x, 1.95, colW, 3.15, c.fill);
+    s.addText(c.title, { x: x + 0.15, y: 2.0, w: colW - 0.3, h: 0.4, fontFace: BF, fontSize: 18, bold: true, color: ink, margin: 0 });
+    const runs = c.body.flatMap((p, j) => para(p, { fontSize: 13, color: ink, paraSpaceBefore: j ? 8 : 0 }, j < c.body.length - 1 || !!c.quote));
+    if (c.quote) {
+      runs.push({ text: c.quote, options: { fontSize: 12.5, italic: true, color: c.dark ? C.lime : C.green, paraSpaceBefore: 10, breakLine: true } });
+      runs.push({ text: c.who, options: { fontSize: 10.5, color: c.dark ? "A9C3B5" : C.muted, paraSpaceBefore: 4 } });
+    }
+    s.addText(runs, { x: x + 0.15, y: 2.45, w: colW - 0.3, h: 2.55, fontFace: BF, valign: "top", margin: 0 });
+  });
+  forYouBand(s, o.forYou);
+  s.addNotes(o.notes);
+  return s;
+}
+
+// Evals
+threeColSlide({
+  section: "Evals",
+  title: "Evals",
+  lead: "Evals are tests for AI behaviour: run the model, prompt or agent on real examples and check whether it did what you wanted.",
+  cols: [
+    {
+      title: "Like unit tests, but…",
+      fill: C.tint,
+      body: [
+        "A **unit test**: same input, same output, pass or fail.",
+        "An **eval**: the output varies, so you run many examples and track a **pass rate**.",
+        "What pass rate is good enough is a product decision, not 100% by default.",
+      ],
+    },
+    {
+      title: "Two kinds of sensor",
+      fill: C.soft,
+      body: [
+        "**Deterministic:** tests, types, linters, scripts. Same input, same verdict. Cheap; run on every edit.",
+        "**LLM-based:** a reviewer agent, an LLM as judge. Sees design and intent, but slower and can be wrong.",
+      ],
+      quote: "“Computational sensors catch the structural stuff reliably… These are cheap, proven, and deterministic.”",
+      who: "Birgitta Böckeler, martinfowler.com, April 2026",
+    },
+    {
+      title: "Benchmarks are not your evals",
+      fill: C.dark,
+      dark: true,
+      body: [
+        "**Benchmarks** (SWE-bench, Terminal-Bench) compare models on shared tasks.",
+        "**Product evals** check your tasks and your failures. A high benchmark score says little about either.",
+      ],
+      quote: "“We also didn’t have specific deployment evaluations tracking sycophancy.”",
+      who: "OpenAI, after rolling back GPT-4o, May 2025",
+    },
+  ],
+  forYou: "For coding agents, your **test suite** and **CI** are the evals. When you change AGENTS.md, a skill or the model, rerun a few real tasks and compare. Start by reading where it failed, then write the check.",
+  notes: "Define evals before anything else: tests for AI behaviour. Hamel Husain and Shreya Shankar (evals FAQ, September 2026): 'AI evals are tests that tell you whether an AI system is doing what you want.' They distinguish model benchmarks, which compare general-purpose models on shared tasks such as GPQA Diamond or Terminal-Bench, from product evals, which measure whether your specific product does what you want. The difference from unit tests: LLM output is non-deterministic, so you run many examples and track a pass rate; Husain notes you don't necessarily need 100%, the pass rate is a product decision. Two kinds of evaluator: code-based checks for objective failures (valid JSON, correct date, tests pass), cheap enough to run on every commit; and LLM-as-judge for subjective ones (tone, when to hand off to a human), which need around 100 labelled examples and ongoing maintenance. Quote from Gergely Orosz and Hamel Husain, 'A pragmatic guide to LLM evals for devs', Pragmatic Engineer, December 2025. Their method starts with error analysis: read real traces, find the failures, then write evals for the ones that matter. The OpenAI line links to the next slide: in their May 2025 post-mortem on the sycophantic GPT-4o update, offline evals and A/B tests looked good, and they admitted they had no deployment eval for sycophancy. Link back to prompt debt: Breunig's fix was to specify behaviour with measurements, which means evals. Sources: hamel.dev/blog/posts/evals-faq, newsletter.pragmaticengineer.com/p/evals, openai.com/index/expanding-on-sycophancy.",
+});
+
+// Sycophancy
+threeColSlide({
+  title: "Sycophancy",
+  lead: "Sycophancy is when the model tells you what you want to hear: it agrees, praises and backs down, even when you are wrong.",
+  cols: [
+    {
+      title: "Why it happens",
+      fill: C.tint,
+      body: [
+        "Models are trained on **human ratings**, and people tend to rate agreement higher.",
+        "Anthropic tested five assistants in 2023: all were consistently sycophantic.",
+      ],
+      quote: "“Both humans and preference models prefer convincingly-written sycophantic responses over correct ones a non-negligible fraction of the time.”",
+      who: "Sharma et al., Anthropic, 2023",
+    },
+    {
+      title: "A real case",
+      fill: C.soft,
+      body: [
+        "April 2025: an update to GPT-4o in ChatGPT gave more weight to thumbs-up feedback.",
+        "It became “overly supportive but disingenuous”, praising bad ideas. OpenAI **rolled it back** four days later.",
+        "Its evals and A/B tests had looked good.",
+      ],
+    },
+    {
+      title: "In our work, it looks like",
+      fill: C.amberTint,
+      body: [
+        "“You're absolutely right!”, then it changes a **correct** answer because you pushed back",
+        "It praises your design instead of finding the flaw",
+        "A reviewer agent that approves the PR you clearly wanted approved",
+      ],
+    },
+  ],
+  forYou: "Agreement is not evidence. Ask neutral questions (“what's wrong with this?”, not “this is fine, right?”), ask it to argue the other side, and let **tests** and a fresh-context **reviewer** decide.",
+  notes: "Define it first: sycophancy is the model telling you what you want to hear, matching your views over the truth. Why: assistants are fine-tuned with human feedback, and human raters tend to prefer answers that agree with them. Anthropic's paper 'Towards Understanding Sycophancy in Language Models' (Sharma et al., October 2023, ICLR 2024) showed five AI assistants consistently exhibit sycophancy across four tasks, and that when a response matches a user's views it is more likely to be preferred. The quote on the slide is from its abstract. They conclude sycophancy is a general behaviour of AI assistants, likely driven in part by human preference judgments. The real case: on 25 April 2025 OpenAI shipped a GPT-4o update to ChatGPT; it added a reward signal from thumbs-up and thumbs-down feedback, and the model 'skewed towards responses that were overly supportive but disingenuous' (OpenAI, 29 April 2025). It was rolled back from 28 April. Their post-mortem: offline evals and A/B tests looked good, some expert testers felt it was 'slightly off', and they had no deployment eval for sycophancy; they now treat behaviour issues as launch-blocking. For developers: the coding-agent version is 'You're absolutely right!' followed by abandoning a correct answer, praising a weak design, or a reviewer agent that approves what you obviously wanted approved. Habits: ask neutral questions, ask it to argue the other side or list what's wrong, and rely on tests and a reviewer in a fresh context, not on its agreement. Sources: arxiv.org/abs/2310.13548, openai.com/index/sycophancy-in-gpt-4o, openai.com/index/expanding-on-sycophancy.",
 });
 
 // Lethal trifecta
@@ -1415,6 +1630,505 @@ termSlide({
   forYouBand(s, "An agent with your repo, reading a public issue, with internet access, has all three. Apply **least privilege**: remove one leg. No secrets, no untrusted input, or no way out.");
   s.addNotes("Simon Willison's lethal trifecta (simonwillison.net/2025/Jun/16/the-lethal-trifecta): an agent that has access to private data, is exposed to untrusted content, and can communicate externally can be tricked by prompt injection into sending the data to an attacker. Each leg alone is normal; all three together is the risk. The practical defence is to remove a leg for the task: run without secrets, avoid reading untrusted content, or cut external access. Relevant as soon as agents read issues, web pages or API results, and especially for unattended loops.");
 }
+
+// Lethal trifecta: one real attack, step by step
+{
+  const s = content("The lethal trifecta", "The lethal trifecta: an agent with private data, untrusted input and a way to send data out can be tricked into leaking. A real case, GitHub's MCP server, May 2025:", "Buzzwords");
+  const steps = [
+    ["1", "Attacker", "Files a public issue with hidden instructions, telling the agent to read the owner's private repos.", "UNTRUSTED CONTENT"],
+    ["2", "You", "Ask the agent: “Have a look at the open issues and fix them.”", null],
+    ["3", "Agent", "Reads the issue, follows it, and opens your private repos.", "PRIVATE DATA"],
+    ["4", "Agent", "Opens a public pull request containing the private data.", "WAY OUT"],
+  ];
+  const sw = (CW - 3 * 0.15) / 4;
+  steps.forEach(([n, who, what, leg], i) => {
+    const x = M + i * (sw + 0.15);
+    box(s, x, 1.95, sw, 1.95, i === 1 ? C.soft : C.tint);
+    s.addText([
+      { text: `${n}  ${who}`, options: { bold: true, fontSize: 16, color: C.ink, breakLine: true } },
+      { text: what, options: { fontSize: 12.5, color: C.ink, paraSpaceBefore: 6 } },
+    ], { x, y: 1.95, w: sw, h: 1.55, fontFace: BF, valign: "top", margin: 12 });
+    if (leg) chip(s, x + 0.12, 3.5, sw - 0.24, 0.3, leg, C.amberTint, C.amber, 10);
+    if (i < steps.length - 1) arrow(s, x + sw - 0.05, 2.75, 0.25, 0.3, C.green);
+  });
+
+  box(s, M, 4.05, 6.0, 1.05, C.dark);
+  s.addText([
+    { text: "“LLMs follow instructions in content.” They can't reliably tell your instructions from an attacker's.", options: { fontSize: 13.5, color: C.white, breakLine: true } },
+    { text: "Simon Willison, who named the trifecta, June 2025", options: { fontSize: 10.5, color: C.lime, paraSpaceBefore: 4 } },
+  ], { x: M, y: 4.05, w: 6.0, h: 1.05, fontFace: BF, valign: "middle", margin: 12 });
+  box(s, M + 6.15, 4.05, CW - 6.15, 1.05, C.amberTint);
+  s.addText(para("**Why “tell it not to” fails:** guardrail products claim to catch 95% of attacks. In security, 95% is a failing grade.", { fontSize: 13.5, color: C.ink }),
+    { x: M + 6.15, y: 4.05, w: CW - 6.15, h: 1.05, fontFace: BF, valign: "middle", margin: 12 });
+
+  forYouBand(s, "Break the chain, don't trust the prompt. Use a **least-privilege** token that can't see other repos, keep untrusted input away from agents with secrets, and block the way out: no network, no public writes.");
+  s.addNotes("The lethal trifecta was named by Simon Willison on 16 June 2025: an agent is exploitable when it combines access to private data, exposure to untrusted content, and the ability to communicate externally. If all three are present, an attacker can trick it into reading your data and sending it to them. The example on the slide is the GitHub MCP exploit reported by Invariant Labs in May 2025, which Willison uses in his post: one MCP server mixed all three. It could read public issues (filed by anyone), read private repositories, and create pull requests. An attacker filed an issue on a public repo with instructions; when the owner asked their agent to look at the open issues, the agent followed the hidden instructions, read the owner's private repos and published the data in a pull request on the public repo. Why it works: 'LLMs follow instructions in content', and they can't reliably tell where an instruction came from; everything becomes one sequence of tokens. This is prompt injection, a term Willison coined in 2022 by analogy with SQL injection; it is not the same as jailbreaking. Why prompting it to be careful isn't enough: vendors sell guardrails that claim to catch '95% of attacks', and Willison's point is that in web application security 95% is a failing grade. The only reliable defence when you combine tools yourself is to remove one leg: a scoped token, no untrusted input for agents with secrets, or no way to send data out. Sources: simonwillison.net/2025/Jun/16/the-lethal-trifecta, simonwillison.net/2025/May/26/github-mcp-exploited.");
+}
+
+// Evals section
+{
+  const s = section("Checking AI work", "Evals: how you know the agent did what you wanted", "Evals");
+  s.addNotes("This section is about checking AI work. Buzzwords showed how models and work go wrong; evals are how you catch it. Philosophy and practice only: what an eval is, which checks you already own, where checks belong in the workflow, and how to grow them from real failures.");
+}
+
+threeColSlide({
+  section: "Evals",
+  title: "Tests are your evals",
+  lead: "For a coding agent, the checks you already own are its evals: tests, types, linters, the build and CI. They pass or fail without asking the model.",
+  cols: [
+    {
+      title: "Checks you already own",
+      fill: C.tint,
+      body: [
+        "**Tests:** does it behave as specified?",
+        "**Types and linters:** does it follow the rules?",
+        "**Build and CI:** does it still fit with everything else?",
+        "None of them care how confident the agent sounds.",
+      ],
+    },
+    {
+      title: "Who checks the checker?",
+      fill: C.soft,
+      body: [
+        "When the same agent writes the code and the tests, the tests may only confirm what the code already does.",
+        "Write or review the tests **first**. See them **fail** before the fix, pass after it.",
+        "Watch for an agent that edits a test to make it pass.",
+      ],
+    },
+    {
+      title: "Done means proven",
+      fill: C.dark,
+      dark: true,
+      body: [
+        "“Done” from the agent is a claim, not evidence.",
+        "Ask for the command it ran and the output it got.",
+        "No check, no done.",
+      ],
+    },
+  ],
+  forYou: "Before you hand over a task, decide which **check** will prove it is finished. If no check exists, writing one is the first task.",
+  notes: "Link back to the Evals slide: evals are tests for AI behaviour. For coding agents most of the evals already exist: tests, type checks, linters, the build and CI. They are code checks, cheap and objective, and they do not depend on the model's own opinion of its work. The weak spot is the checker itself: if the agent writes both the implementation and the tests, the tests can simply mirror the implementation, including its mistakes. Habits: write or review the tests before the implementation, see them fail first (red, then green), and treat changes to existing tests as something to review carefully. Finally, 'done' is a claim; ask for the commands and their output. This is the same idea as the verification step in Superpowers and Agentcraft that participants will see in the trials.",
+});
+
+{
+  const s = content("Checks in the workflow", "A good agent workflow puts a check at every step, so mistakes are caught where they are cheapest to fix.", "Evals");
+  const steps = [
+    ["Plan", "You read the plan before any code. A wrong decision costs one sentence here."],
+    ["Test first", "The new test fails for the right reason before the change."],
+    ["Implement", "Tests, types and lint pass after each small step."],
+    ["Review", "A reviewer in a fresh context checks scope and quality. It didn't write the code."],
+    ["Verify", "The commands are run and the output is shown. Then it is done."],
+  ];
+  const cw = (CW - 4 * 0.12) / 5;
+  steps.forEach(([t, d], i) => {
+    const x = M + i * (cw + 0.12);
+    box(s, x, 1.95, cw, 3.15, i % 2 ? C.soft : C.tint);
+    s.addText([
+      { text: `${i + 1}`, options: { bold: true, fontSize: 22, color: C.green, breakLine: true } },
+      { text: t, options: { bold: true, fontSize: 17, color: C.ink, paraSpaceBefore: 4, breakLine: true } },
+      { text: d, options: { fontSize: 14, color: C.ink, paraSpaceBefore: 10 } },
+    ], { x, y: 1.95, w: cw, h: 3.15, fontFace: BF, valign: "top", margin: 12 });
+  });
+  forYouBand(s, "In today's trials, notice which of these checks each workflow has, and which ones it leaves to you.");
+  s.addNotes("Define the idea: checks belong at every step of the workflow, not only at the end. The earlier a check runs, the cheaper the mistake it catches: a wrong design caught in the plan costs a sentence; caught in review it costs a rewrite. Plan: the human reads and approves the plan. Test first: the failing test proves the test can detect the problem. Implement: fast code checks after each small step. Review: a reviewer in a fresh context, so it doesn't share the author's assumptions and isn't inclined to agree (link to sycophancy). Verify: the agent runs the commands and shows the output before claiming it is done. Use this as a lens for the four workflow trials: Native, Stack-aware, Superpowers and Agentcraft each put these checks in different places, or leave them to you.");
+}
+
+threeColSlide({
+  section: "Evals",
+  title: "Start from failures",
+  lead: "Error analysis means reading real agent runs, naming what went wrong, and writing checks for the failures that keep coming back.",
+  cols: [
+    {
+      title: "1  Read",
+      fill: C.tint,
+      body: [
+        "Look at real sessions and diffs where the result was wrong or needed corrections.",
+        "Read what the agent actually did, not what it said it did.",
+      ],
+    },
+    {
+      title: "2  Name",
+      fill: C.soft,
+      body: [
+        "Group the failures into kinds:",
+        "skipped the tests · touched unrelated files · ignored our conventions · invented an API · stopped too early",
+        "A few kinds usually cover most of the pain.",
+      ],
+    },
+    {
+      title: "3  Check",
+      fill: C.dark,
+      dark: true,
+      body: [
+        "Turn a repeated failure into a check: a test, a lint rule, a hook, a review step.",
+        "Add a rule to AGENTS.md only when no check can catch it.",
+      ],
+    },
+  ],
+  forYou: "Keep a short **failure log** during today's trials: what went wrong, and what would have caught it. That log is your first eval set.",
+  notes: "Define error analysis: reading real outputs, naming the failures and counting which kinds repeat, before writing any eval. Hamel Husain and Shreya Shankar's evals course is built on this order: look at the data first, then write the checks for the failures that matter, instead of inventing generic metrics up front. For coding agents the 'data' is your sessions and diffs. Read what the agent did, not its summary. Name the failures in your own words and group them. Then turn the repeated ones into checks, preferring something that passes or fails (test, lint rule, pre-commit hook, reviewer step) over another sentence in the instructions. This ties back to prompt debt: every incident that becomes one more rule makes the prompt heavier; a check carries the weight instead.",
+});
+
+threeColSlide({
+  section: "Evals",
+  title: "Evals for your agent setup",
+  lead: "Your agent setup (instructions, skills, model and workflow) is code too. When you change it, rerun a few real tasks and compare before you trust the change.",
+  cols: [
+    {
+      title: "A small task set",
+      fill: C.tint,
+      body: [
+        "Three to five real tasks you already finished, with a known good result.",
+        "Mix them: a bug fix, a feature, a refactor.",
+      ],
+    },
+    {
+      title: "Change one thing",
+      fill: C.soft,
+      body: [
+        "A line in AGENTS.md, a skill, the model or the workflow.",
+        "Run the same tasks before and after. Change several things at once and you won't know which one helped.",
+      ],
+    },
+    {
+      title: "Compare evidence",
+      fill: C.dark,
+      dark: true,
+      body: [
+        "Do the tests pass?",
+        "Did it stay in scope?",
+        "Did it follow our conventions?",
+        "How many times did you have to step in?",
+      ],
+    },
+  ],
+  forYou: "This afternoon's **compare the four** is exactly this: one task, four setups, judged on evidence instead of impressions.",
+  notes: "Define it: an eval for the setup, not for the product. Instructions, skills, the chosen model and the workflow all change agent behaviour, so a change to any of them should be tested like a code change. Keep a small set of real tasks with known good outcomes; rerun them before and after a change, one change at a time; and compare on evidence: tests, scope, conventions, and how often a human had to correct the agent. It doesn't need tooling to start: a short table is enough. This is the same method as the workshop's trial rows and the 'Compare the four' slot in the afternoon.",
+});
+
+// Evals: concrete practice
+function codePane(s, x, y, w, h, label, code, size = 12) {
+  box(s, x, y, w, h, C.dark);
+  s.addText(label, { x: x + 0.15, y: y + 0.08, w: w - 0.3, h: 0.32, fontFace: BF, fontSize: 11, bold: true, color: C.lime, charSpacing: 1, margin: 0 });
+  s.addText(code, { x: x + 0.15, y: y + 0.42, w: w - 0.3, h: h - 0.5, fontFace: "Courier New", fontSize: size, color: C.white, valign: "top", margin: 0 });
+}
+
+
+
+{
+  const s = content("A reviewer with a checklist", "A reviewer agent is an LLM as judge for code: a second agent, in a fresh context, that checks the diff against a fixed list.", "Evals");
+  codePane(s, M, 1.95, 7.3, 4.7, ".github/agents/reviewer.md",
+    `---
+description: Reviews the current branch. Never edits code.
+tools: read-only (read, search, git diff)
+---
+Review git diff main...HEAD against docs/plan.md.
+For each item, answer PASS or FAIL with file:line evidence.
+
+1. Every changed file is needed by the plan.
+2. New behaviour has a test that fails without it.
+3. No test was weakened, skipped or deleted.
+4. Errors are handled, not swallowed.
+5. Names and structure follow AGENTS.md.
+
+End with VERDICT: PASS or FAIL.
+Do not praise. Do not suggest extras.`, 12.5);
+  box(s, M + 7.45, 1.95, CW - 7.45, 4.7, C.tint);
+  s.addText([
+    { text: "What makes it work", options: { bold: true, fontSize: 18, color: C.ink, breakLine: true } },
+    ...["**Fresh context:** it didn't write the code, so it doesn't share the author's assumptions.", "**Read-only:** it judges; it doesn't fix.", "**Yes or no items** with evidence, not a score from 1 to 10.", "**No praise:** fights sycophancy.", "**Test the judge:** run it on a branch you know is bad. If it passes, fix the checklist."]
+      .flatMap((t, i, a) => para(t, { bullet: { indent: 14 }, fontSize: 14.5, color: C.ink, paraSpaceBefore: 8 }, i < a.length - 1)),
+  ], { x: M + 7.45, y: 1.95, w: CW - 7.45, h: 4.7, fontFace: BF, valign: "top", margin: 16 });
+  s.addNotes("This is the LLM-as-judge idea from the Evals slide, applied to code review. The reviewer is a separate agent definition (Copilot uses .github/agents/*.md; OpenCode and Claude Code have equivalent agent files; the frontmatter fields differ by harness, so treat the header as a sketch). Key choices: it runs in a fresh context so it doesn't inherit the implementer's reasoning; it has read-only tools; the checklist items are binary with evidence, because vague scores drift and can't be acted on; and it is told not to praise, which counters sycophancy. Finally, evaluate the judge itself: give it a branch with a known problem, for example a deleted test or an unrelated file change, and confirm it fails. Superpowers' requesting-code-review and Agentcraft's scope and quality reviewers are full versions of this pattern; participants will see them in the trials.");
+}
+
+
+{
+  const s = content("A setup eval you can run", "A setup eval reruns a few real tasks with your agent and checks each result with a script, so you can compare before and after a change.", "Evals");
+  codePane(s, M, 1.95, 4.6, 3.3, "evals/",
+    `tasks/
+  fix-date-parsing/
+    task.md   the prompt
+    start     a1b2c3d
+    check.sh  mvn -q test
+              -Dtest=DateParserTest
+  add-archived-flag/
+    ...
+run.sh`, 12.5);
+  codePane(s, M + 4.75, 1.95, CW - 4.75, 3.3, "evals/run.sh",
+    `for t in evals/tasks/*/; do
+  git worktree add -f ../ev "$(cat $t/start)"
+  (cd ../ev && copilot -p "$(cat $t/task.md)" --allow-all-tools)
+  (cd ../ev && bash "$OLDPWD/$t/check.sh") && r=PASS || r=FAIL
+  echo "$t $r $(git -C ../ev diff --name-only | wc -l) files"
+  git worktree remove -f ../ev
+done`, 11.5);
+  box(s, M, 5.4, CW, 1.25, C.soft);
+  s.addText([
+    { text: "When to run it", options: { bold: true, fontSize: 12, color: C.green, charSpacing: 1, breakLine: true } },
+    ...para("After you change **AGENTS.md**, a **skill**, the **model** or the **workflow**. Not on every commit. Run each task two or three times, because the output varies. Other harnesses: **opencode run** or **claude -p**.", { fontSize: 15, color: C.ink, paraSpaceBefore: 4 }),
+  ], { x: M, y: 5.4, w: CW, h: 1.25, fontFace: BF, valign: "middle", margin: 14 });
+  s.addNotes("A concrete, minimal version of 'Evals for your agent setup'. Each task is a folder: the prompt as a developer would write it, the commit to start from, and a check script that passes or fails. Pick tasks you already solved, so you know a good result exists. run.sh starts each task in a fresh worktree at the start commit, runs the agent non-interactively (Copilot CLI with -p; OpenCode with opencode run; Claude Code with claude -p), runs the check, and prints pass or fail plus the number of changed files as a rough scope signal. Run it before and after one change to your setup. Because agent output varies, run each task two or three times and look at the pattern, not one result. Keep it small: three to five tasks is enough to catch a setup change that makes things worse. Read the diffs of the failures; that feeds back into 'Start from failures'.");
+}
+
+
+{
+  const s = content("Three layers of enforcement", "Checks run in three layers: while the agent edits, before it says done, and before the code merges. Only the last layer is out of the agent's reach.", "Evals");
+  table(s, ["Layer", "When", "What runs", "Can the agent get around it?"], [
+    ["1  Edit", "Before and after every tool call", "preToolUse blocks protected paths and commands; postToolUse runs format, lint and types", "Yes: shell tricks, or editing the hook config"],
+    ["2  Done", "Before it stops, before every commit", "The stop hook runs make verify; the pre-commit hook runs lint, gitleaks and the commit message check", "Yes: --no-verify, unless a hook denies it"],
+    ["3  Merge", "On every pull request", "CI runs make verify, static analysis and security scans; branch protection, CODEOWNERS, human review", "No"],
+    ["Around it", "Always", "A sandbox or devcontainer: limited network, no production secrets", "No"],
+  ], { x: M, y: 1.95, w: CW, colW: [1.5, 2.4, 5.3, 2.933], rowH: 0.6, size: 12.5, boldFirst: true });
+  forYouBand(s, "Layers 1 and 2 give fast feedback; layer 3 is the guarantee. Every check that really matters must also run in **CI**.");
+  s.addNotes("This slide replaces the earlier 'When to run which check' table with the same content grouped into layers. Layer 1, edit: harness hooks. preToolUse can deny a tool call before it happens (protected paths, dangerous commands); postToolUse runs fast checks after edits and feeds errors back. These are guardrails against accidents, not security: an agent can work around them with shell commands such as sed, or by editing the hook files. Layer 2, done: the stop hook (agentStop in Copilot CLI, Stop in Claude Code) runs one definition-of-done script such as make verify, and git pre-commit and commit-msg hooks run lint, gitleaks and commit message rules. git commit --no-verify skips git hooks, so deny it in preToolUse. Layer 3, merge: CI reruns everything, plus slower static analysis and security scans; branch protection requires green CI and a human approval; CODEOWNERS protects tests, hooks, baselines and CI config. This is the only layer the agent cannot change. Around it: run agents in a sandbox or devcontainer with limited network access and no production secrets, which also breaks the lethal trifecta.");
+}
+
+{
+  const s = content("Hooks: checks the agent can't skip", "A hook is a command the harness runs at a fixed moment, such as before a tool call or when the agent wants to stop. An instruction asks; a hook enforces.", "Evals");
+  codePane(s, M, 1.95, 6.6, 3.25, ".github/hooks/protect.sh  (preToolUse: before every tool call)",
+    `#!/bin/bash
+path=$(jq -r '.toolArgs | (fromjson? // .) | .path // ""')
+if [[ $path =~ src/test/|db/migration/|\\.github/hooks/ ]]; then
+  echo '{"permissionDecision": "deny",
+    "permissionDecisionReason": "Protected path. Ask a human."}'
+fi`, 11);
+  codePane(s, M + 6.75, 1.95, CW - 6.75, 3.25, ".github/hooks/must-pass.sh  (agentStop)",
+    `#!/bin/bash
+if ! mvn -q test > test.log 2>&1; then
+  echo '{"decision": "block",
+    "reason": "Tests fail. Fix code, not tests."}'
+fi`, 11);
+  box(s, M, 5.35, CW, 1.3, C.soft);
+  s.addText([
+    { text: "Also worth blocking", options: { bold: true, fontSize: 12, color: C.green, charSpacing: 1, breakLine: true } },
+    ...para("**git push --force**, **--no-verify**, **rm -rf**, **npm install** without approval, and code edits before an approved plan exists. Keep preToolUse hooks under a second: in Copilot CLI, a hook that times out lets the action through.", { fontSize: 15, color: C.ink, paraSpaceBefore: 4 }),
+  ], { x: M, y: 5.35, w: CW, h: 1.3, fontFace: BF, valign: "middle", margin: 14 });
+  s.addNotes("Both scripts are wired in .github/hooks/checks.json under preToolUse and agentStop (Copilot CLI; docs.github.com/en/copilot/reference/hooks-reference). preToolUse receives the tool name and its arguments as JSON on stdin and can return permissionDecision 'deny' with a reason; the agent sees the reason and adjusts. The exact argument field for the file path differs per tool, so test the script with a real session before relying on it. Protect the tests, the migrations that already ran, and the hook files themselves, otherwise the agent can edit its own guard. agentStop runs when the agent finishes a turn; decision 'block' forces it to continue. Guard against endless loops: Claude Code overrides a Stop hook after eight consecutive blocks; in Copilot, check stop_hook_active or count retries. Claude Code has the same pattern with PreToolUse (exit code 2 blocks) and Stop; Copilot CLI also reads .claude/settings.json hooks. Caveats: a preToolUse command hook fails closed if it crashes, but fails open on timeout; hooks are guardrails against accidents, not a security boundary, because the agent can use shell commands; CI is the real gate.");
+}
+
+{
+  const s = content("Tests the agent can't cheat", "An agent under pressure to get green can weaken the test instead of fixing the code. These checks make that visible or impossible.", "Evals");
+  codePane(s, M, 1.95, 6.9, 4.7, "ci/test-integrity.sh  (runs on every PR)",
+    `#!/bin/bash
+base=origin/main
+tests=('*Test.java' '*.test.ts' '*.test.tsx')
+
+if git diff -U0 $base...HEAD -- "\${tests[@]}" \\
+  | grep -E '^\\+.*(@Disabled|\\.skip\\(|\\.only\\(|xit\\()'; then
+  echo "A test was skipped or focused"; exit 1
+fi
+
+if git diff --diff-filter=D --name-only $base...HEAD \\
+  -- "\${tests[@]}" | grep .; then
+  echo "A test file was deleted"; exit 1
+fi`, 11);
+  box(s, M + 7.05, 1.95, CW - 7.05, 4.7, C.tint);
+  s.addText([
+    { text: "And three more", options: { bold: true, fontSize: 18, color: C.ink, breakLine: true } },
+    ...["**Coverage on changed lines:** diff-cover fails the PR if new code isn't tested.", "**Golden master before a refactor:** record today's output with approval tests. The approved files are protected.", "**Hidden tests:** acceptance scenarios in a repo the agent can't see or edit. CI runs them."]
+      .flatMap((t, i, a) => para(t, { bullet: { indent: 14 }, fontSize: 14.5, color: C.ink, paraSpaceBefore: 10 }, i < a.length - 1)),
+  ], { x: M + 7.05, y: 1.95, w: CW - 7.05, h: 4.7, fontFace: BF, valign: "top", margin: 16 });
+  s.addNotes("The failure: an agent asked to make tests pass may take the shortest path, which is to skip, loosen or delete the test. Kent Beck lists 'disabling or deleting tests' as a sign the agent is cheating (Augmented Coding: Beyond the Vibes, June 2025). StrongDM: 'A test, stored in the codebase, can be lazily rewritten to match the code' (factory.strongdm.ai, February 2026). The script runs in CI and fails if a diff adds @Disabled, .skip, .only or xit, or deletes a test file; add a label override for legitimate deletions. Coverage on changed lines: diff-cover reads a coverage report (Cobertura or JaCoCo XML) and compares against the base branch, for example diff-cover coverage.xml --compare-branch=origin/main --fail-under=80. Golden master: before an agent refactors, capture current behaviour with approval tests (ApprovalTests.Java, Jest snapshots run with --ci) and protect the approved files; a pure refactor must keep them identical. Hidden tests: StrongDM keeps scenarios outside the repository, like a holdout set in model training, so the agent cannot rewrite them; CI checks them out with a token the agent does not have. A simpler version for teams: a test-writer agent that may only edit src/test, and an implementer that may not.");
+}
+
+{
+  const s = content("Static analysis and code health", "Static analysis checks the code without running it: complexity, duplication, types and security. Agents copy patterns, so these limits matter more than before.", "Evals");
+  codePane(s, M, 1.95, 6.6, 3.25, "eslint.config.js  (rules excerpt)",
+    `rules: {
+  complexity: ["error", 10],
+  "max-lines-per-function": ["error", { max: 50 }],
+  "sonarjs/cognitive-complexity": ["error", 15],
+  "@typescript-eslint/no-explicit-any": "error",
+}
+// Java: PMD or Checkstyle limits, Error Prone + NullAway
+// Duplication: npx jscpd src, mvn pmd:cpd-check`, 11);
+  box(s, M + 6.75, 1.95, CW - 6.75, 3.25, C.tint);
+  s.addText([
+    ...["**Off by default:** complexity and length limits aren't in the recommended presets. Turn them on.", "**Ratchet:** eslint --suppress-all records today's problems; only new ones fail. Protect the baseline file.", "**Security on new code:** CodeQL or a SonarQube quality gate in CI."]
+      .flatMap((t, i, a) => para(t, { bullet: { indent: 14 }, fontSize: 14, color: C.ink, paraSpaceBefore: i ? 10 : 0 }, i < a.length - 1)),
+  ], { x: M + 6.75, y: 1.95, w: CW - 6.75, h: 3.25, fontFace: BF, valign: "top", margin: 16 });
+  box(s, M, 5.35, CW, 1.3, C.dark);
+  s.addText([
+    { text: "Write the error message for the agent: say how to fix it", options: { bold: true, fontSize: 12, color: C.lime, charSpacing: 1, breakLine: true } },
+    { text: "“Because the lints are custom, we write the error messages to inject remediation instructions into agent context.” OpenAI, Harness engineering, February 2026", options: { fontSize: 15, color: C.white, paraSpaceBefore: 4 } },
+  ], { x: M, y: 5.35, w: CW, h: 1.3, fontFace: BF, valign: "middle", margin: 14 });
+  s.addNotes("Define static analysis: checking code without running it. Birgitta Böckeler (Maintainability sensors for coding agents, martinfowler.com, May 2026) calls oversized functions, deep nesting and long parameter lists 'the AI failure modes that are the most low-hanging fruit for static code analysis', notes these limits weren't active in ESLint's default preset, and observes agents are 'quite happy to copy and paste'. TypeScript: ESLint core rules complexity, max-lines-per-function, max-params, max-depth, plus eslint-plugin-sonarjs cognitive-complexity, and @typescript-eslint/no-explicit-any with tsconfig strict. Java: PMD (CognitiveComplexity, NcssCount) or Checkstyle (CyclomaticComplexity, MethodLength), Error Prone with NullAway for null safety. Duplication: jscpd for TS, PMD CPD for Java. Ratchet: in an existing codebase you can't fix everything first; ESLint's bulk suppressions (eslint --suppress-all writes eslint-suppressions.json) let old violations pass and new ones fail; SonarQube's 'clean as you code' gate applies conditions to new code only. Protect baseline files and thresholds with CODEOWNERS, otherwise the agent raises the limit. Böckeler saw the agent move complexity elsewhere (prop chains) to satisfy length limits, so combine several metrics and still review. Security: CodeQL code scanning or a SonarQube quality gate as a required check. Agent-readable messages: OpenAI's harness engineering post (February 2026) writes custom lint messages that tell the agent how to fix the problem. Verify flags against your installed versions.");
+}
+
+{
+  const s = content("Commit and PR gates", "Commit and PR gates check the shape of the work, not just the code: what each commit is, how big the change is, and who must approve it.", "Evals");
+  codePane(s, M, 1.95, 6.9, 3.25, "Structural vs. behavioural commits",
+    `# lefthook.yml: every commit says what kind it is
+commit-msg:
+  commands:
+    kind:
+      run: grep -qE '^(structural|behavioral): ' {1}
+
+# CI: a structural commit must not change tests
+for c in $(git rev-list origin/main..HEAD); do
+  git log -1 --format=%s $c | grep -q '^structural:' &&
+  git diff-tree --no-commit-id --name-only -r $c |
+    grep -q 'src/test/' && { echo "$c changes tests"; exit 1; }
+done`, 10.5);
+  box(s, M + 7.05, 1.95, CW - 7.05, 3.25, C.tint);
+  s.addText([
+    { text: "PR gates", options: { bold: true, fontSize: 18, color: C.ink, breakLine: true } },
+    ...["**Size limit:** a PR over about 400 changed lines fails; split it.", "**Links a plan or issue** in its description.", "**Branch protection:** green CI and a human approval.", "**CODEOWNERS** on tests, hooks, baselines and CI config."]
+      .flatMap((t, i, a) => para(t, { bullet: { indent: 14 }, fontSize: 14, color: C.ink, paraSpaceBefore: 8 }, i < a.length - 1)),
+  ], { x: M + 7.05, y: 1.95, w: CW - 7.05, h: 3.25, fontFace: BF, valign: "top", margin: 16 });
+  box(s, M, 5.35, CW, 1.3, C.dark);
+  s.addText([
+    { text: "Kent Beck's rule for working with agents", options: { bold: true, fontSize: 12, color: C.lime, charSpacing: 1, breakLine: true } },
+    { text: "“Never mix structural and behavioral changes in the same commit.” A refactor that also changes behaviour can't be checked; split, and each half can.", options: { fontSize: 15, color: C.white, paraSpaceBefore: 4 } },
+  ], { x: M, y: 5.35, w: CW, h: 1.3, fontFace: BF, valign: "middle", margin: 14 });
+  s.addNotes("Commit and PR gates check the shape of the work. Structural vs behavioural: Kent Beck's system prompt for augmented coding (Augmented Coding: Beyond the Vibes, June 2025) says 'Never mix structural and behavioral changes in the same commit' and that commit messages must state which kind they are. Why it matters with agents: a structural commit (rename, extract, move) should change no behaviour, so the existing tests must pass unchanged; a commit that mixes both is hard to review. The lefthook commit-msg hook rejects commits without a structural: or behavioral: prefix ({1} is the commit message file). The CI loop fails if a structural commit touches test files. Teams on Conventional Commits can map this to commitlint types, for example refactor for structural. PR gates: a size limit keeps changes reviewable (GitHub has no built-in one; use a small script or Danger); require each PR to link its plan or issue; branch protection or rulesets require green CI and at least one human approval; CODEOWNERS on tests, hook files, lint baselines and CI workflows means the agent cannot change its own gates without a human. The 400-line figure is a common rule of thumb, not a standard; pick your own.");
+}
+
+{
+  const s = content("Checks for typical agent failures", "Each common agent failure has a check that catches it without asking the model.", "Evals");
+  table(s, ["The agent…", "The check", "Tools"], [
+    ["Edits a test to make it pass", "Block test paths while implementing", "preToolUse hook, CODEOWNERS"],
+    ["Writes tests that check nothing", "Mutation testing: change the code, a test must fail", "PIT (Java), Stryker (JS/TS)"],
+    ["Touches files outside the plan", "Changed files must match the plan's list", "Scope script in the stop hook and CI"],
+    ["Invents an API or a package", "Compile, type-check, review new dependencies", "tsc, mvn compile, dependency review"],
+    ["Breaks our architecture", "Layer rules as tests", "ArchUnit, dependency-cruiser"],
+    ["Breaks the API for clients", "Diff the generated spec against main", "oasdiff, graphql-inspector"],
+    ["Writes an unsafe migration", "Lint migrations; old ones are read-only", "squawk, preToolUse hook"],
+    ["Silences a warning", "Ban suppression comments", "eslint-comments/no-use, grep in CI"],
+    ["Skips the git hooks", "Deny --no-verify; CI runs it all again", "preToolUse hook, CI"],
+    ["Commits a secret", "Scan staged files", "gitleaks in pre-commit"],
+    ["Says “done” too early", "Tests must pass before it may stop", "agentStop / Stop hook"],
+  ], { x: M, y: 1.95, w: CW, colW: [3.3, 4.8, 4.033], rowH: 0.39, size: 12.5, boldFirst: true });
+  s.addNotes("A lookup table: each failure most teams see, with a deterministic check. New rows compared with the earlier version: files outside the plan (the plan lists allowed paths; a script compares git diff --name-only against it and also caps diff size), breaking API changes (generate the OpenAPI spec with springdoc and compare with main using oasdiff; graphql-inspector diff for GraphQL schemas), unsafe migrations (squawk lints Postgres SQL such as Flyway files; a preToolUse hook makes applied migrations read-only), silenced warnings (eslint-plugin-eslint-comments no-use or a CI grep for eslint-disable and @SuppressWarnings), and skipped git hooks (deny git commit --no-verify in preToolUse; CI reruns everything anyway). Mutation testing is slow, so run it on changed code in CI. Ask participants to add rows from their failure log during the trials. Verify tool flags against current docs before use.");
+}
+
+{
+  const s = content("The checks that matter most", "If you add only six things to your workflow, add these.", "Evals");
+  const items = [
+    ["Name the check in the brief", "“Done when mvn test -Dtest=DateParserTest passes.” No check, no task."],
+    ["Run checks outside the model", "Hooks for fast feedback, CI for the guarantee."],
+    ["Tests fail first, and stay protected", "Red before green. The agent may add tests, not weaken them."],
+    ["Protect the gates themselves", "Hooks, baselines and CI config behind CODEOWNERS."],
+    ["Ratchet, don't rewrite", "New problems fail; old ones get fixed over time."],
+    ["A fresh-context reviewer", "Read-only, with a checklist. Then you judge design, naming, security."],
+  ];
+  items.forEach(([t, d], i) => {
+    const y = 1.95 + i * 0.78;
+    box(s, M, y, CW, 0.68, i % 2 ? C.soft : C.tint);
+    s.addText([
+      { text: `${i + 1}   `, options: { bold: true, fontSize: 20, color: C.green } },
+      { text: t + "   ", options: { bold: true, fontSize: 16, color: C.ink } },
+      { text: d, options: { fontSize: 15, color: C.ink } },
+    ], { x: M, y, w: CW, h: 0.68, fontFace: BF, valign: "middle", margin: 16 });
+  });
+  s.addNotes("The section in one slide. One: every brief names the check that proves the task is done. Two: important checks run outside the model; hooks give fast feedback, CI is the guarantee. Three: a new test must fail before the change, and the agent can add tests but not skip, loosen or delete them. Four: the agent must not be able to edit its own gates, so hook files, lint baselines, thresholds and CI config sit behind CODEOWNERS. Five: in existing code, use a ratchet: block new problems and fix old ones over time, instead of a big cleanup. Six: a read-only reviewer agent in a fresh context with a binary checklist, and then a human reviews what checks can't judge. Ask the room which of the six their workflow already has.");
+}
+
+{
+  const s = content("More checks to explore", "Backup: more deterministic checks, one line each, for teams that want to go further.", "Evals");
+  const groups = [
+    ["Stronger tests", "Property-based tests (fast-check, jqwik), contract tests (Pact, Spring Cloud Contract), differential testing of old vs. new code."],
+    ["Supply chain", "OSV-Scanner for known vulnerabilities, an SBOM, license checks, Socket for made-up or typo packages."],
+    ["Budgets", "Bundle size (size-limit), Lighthouse CI, JMH benchmarks, startup time."],
+    ["Accessibility", "jsx-a11y on every edit, axe in Playwright tests."],
+    ["Process", "A test-first guard (tdd-guard), an ADR required when architecture config changes, plans kept as files."],
+    ["Agent metrics", "Revert rate and churn of AI-assisted commits, cost per task, a transcript check that tests were really run."],
+  ];
+  const cw = (CW - 0.3) / 3;
+  groups.forEach(([t, d], i) => {
+    const x = M + (i % 3) * (cw + 0.15);
+    const y = 1.95 + Math.floor(i / 3) * 2.4;
+    box(s, x, y, cw, 2.25, i % 2 ? C.soft : C.tint);
+    s.addText([
+      { text: t, options: { bold: true, fontSize: 17, color: C.ink, breakLine: true } },
+      { text: d, options: { fontSize: 14, color: C.ink, paraSpaceBefore: 8 } },
+    ], { x, y, w: cw, h: 2.25, fontFace: BF, valign: "top", margin: 14 });
+  });
+  s.addNotes("Backup slide, not presented by default. Ideas from the research that didn't make the main section. Stronger tests: property-based tests generate many inputs and check a rule that must always hold; contract tests check that services agree on their API; differential testing runs the old and the new implementation on the same inputs and compares the results. Supply chain: OSV-Scanner checks lockfiles against known vulnerabilities; an SBOM lists what you ship; Socket flags new, suspicious or non-existent packages, which matters because models sometimes invent package names. Budgets: fail the build when the bundle, page performance, a benchmark or the startup time gets worse. Accessibility: jsx-a11y and axe catch part of WCAG issues automatically. Process: tdd-guard blocks production edits until a failing test exists (its decision is partly made by an LLM); require an ADR when architecture config changes; keep plans as files in the repo. Agent metrics: use Co-authored-by trailers to compare revert rate and churn, track cost per task, and check the session transcript that tests were actually run. All tool names should be checked against current docs before use.");
+}
+
+
+// Where it's heading section
+{
+  const s = section("Where it's heading", "An open debate about the future of our craft", "Future");
+  s.addNotes("A short discussion section with no verdict. The goal is to show the main views on where software development is going with agents, and to let the room talk.");
+}
+
+// Future of software development: camps, reading code, open questions
+{
+  const s = content("The future of software development", "The future of software development is an open debate. Each camp below is a serious view, and none has been proven right. The world is still being built.", "Buzzwords");
+  const camps = [
+    ["Don't read the code", "Code becomes like compiler output. You judge the result by specs, tests and behaviour, not by reading it."],
+    ["You own every line", "AI can type the code, but you must understand it. If you can't explain a change, you shouldn't ship it."],
+    ["Manager of agents", "Your job moves up a level: you describe the work, split it, and decide what is good enough."],
+    ["Craft", "Writing code is how you think. Hand all of it away and you slowly lose the understanding you need to judge it."],
+    ["More builders", "If code becomes cheap, more people build more software. The hard part moves to deciding what to build."],
+  ];
+  const cw = (CW - 4 * 0.12) / 5;
+  camps.forEach(([t, d], i) => {
+    const x = M + i * (cw + 0.12);
+    box(s, x, 1.95, cw, 3.15, i % 2 ? C.soft : C.tint);
+    s.addText([
+      { text: t, options: { bold: true, fontSize: 17, color: C.ink, breakLine: true } },
+      { text: d, options: { fontSize: 14, color: C.ink, paraSpaceBefore: 10 } },
+    ], { x, y: 1.95, w: cw, h: 3.15, fontFace: BF, valign: "top", margin: 12 });
+  });
+  box(s, M, 5.3, CW, 1.35, C.dark);
+  s.addText([
+    { text: "The camps overlap", options: { bold: true, fontSize: 12, color: C.lime, charSpacing: 1, breakLine: true } },
+    { text: "Most people hold more than one view at once: let the agent write a throwaway script unread, and read every line of the payment service.", options: { fontSize: 15, color: C.white, paraSpaceBefore: 4 } },
+  ], { x: M, y: 5.3, w: CW, h: 1.35, fontFace: BF, valign: "middle", margin: 14 });
+  s.addNotes("Present this as a map of views, not a verdict. Don't read the code: if the specification and tests are good enough, code is an implementation detail, like compiler output; some teams already try to work this way. You own every line: the AI types, but responsibility and understanding stay with the person who ships it. Manager of agents: the developer's work moves up a level, from writing code to describing work, splitting it across agents, and judging the result. Craft: writing code is how many people think through a problem; if you never write it, you may lose the understanding and judgement needed to review it. More builders: when code gets cheaper, demand usually grows; more people build more software, and the scarce skill becomes deciding what is worth building. Ask the room which camp they lean toward, and for which kind of code.");
+}
+
+{
+  const s = content("Reading code", "Reading code is the sharpest split: will developers still read what agents write, or judge it only by what it does?", "Buzzwords");
+  const side = (x, w, fill, title, argument, pushback) => {
+    box(s, x, 1.95, w, 3.15, fill);
+    s.addText([
+      { text: title, options: { bold: true, fontSize: 20, color: C.ink, breakLine: true } },
+      { text: argument, options: { fontSize: 16, color: C.ink, paraSpaceBefore: 10, breakLine: true } },
+      { text: "The pushback: ", options: { bold: true, fontSize: 15, color: C.amber, paraSpaceBefore: 16 } },
+      { text: pushback, options: { fontSize: 15, color: C.ink } },
+    ], { x, y: 1.95, w, h: 3.15, fontFace: BF, valign: "top", margin: 16 });
+  };
+  const hw = (CW - 0.15) / 2;
+  side(M, hw, C.tint, "Don't read it",
+    "We don't read compiler output. If the spec and the tests are good enough, the code is an implementation detail.",
+    "The same agent often writes the code and the tests. Who checks the checker?");
+  side(M + hw + 0.15, hw, C.soft, "Own every line",
+    "Code is something you will maintain, debug and answer for. Understanding it is the job, not overhead.",
+    "Agents write faster than anyone can read. Reading everything doesn't scale.");
+  box(s, M, 5.3, CW, 1.35, C.dark);
+  s.addText([
+    { text: "The open question", options: { bold: true, fontSize: 12, color: C.lime, charSpacing: 1, breakLine: true } },
+    { text: "What would make you trust code you haven't read? The same things that make you trust a colleague's code, or something new?", options: { fontSize: 16, color: C.white, paraSpaceBefore: 4 } },
+  ], { x: M, y: 5.3, w: CW, h: 1.35, fontFace: BF, valign: "middle", margin: 14 });
+  s.addNotes("Define the question: will developers keep reading the code agents write, or judge it only by its behaviour? Don't read it: we already trust layers we never read, such as compiler output and most libraries; if specifications and tests are strong enough, the code itself matters less. The pushback: when the same agent writes both the code and the tests, the tests may only confirm what the code already does. Own every line: code is a long-lived liability; someone has to maintain, debug and answer for it, so understanding it is the work itself. The pushback: agents produce code faster than people can read it, so reading everything becomes the bottleneck. Ask the room where they draw the line: which code would they ship without reading, and why?");
+}
+
+{
+  const s = content("Open questions", "Open questions for the room. Nobody has the answers yet, including the people building the tools.", "Buzzwords");
+  const qs = [
+    "Will we still read code, or only specs and tests?",
+    "Who is in the loop, and at which step: every change, every merge, or only when something breaks?",
+    "How do juniors learn the craft if agents write most of the code?",
+    "If code becomes cheap, what becomes valuable?",
+    "Where will your team be in ten years, and what would you need to believe to get there?",
+  ];
+  qs.forEach((q, i) => {
+    const y = 1.95 + i * 0.92;
+    box(s, M, y, CW, 0.8, i % 2 ? C.soft : C.tint);
+    s.addText([
+      { text: `${i + 1}   `, options: { bold: true, fontSize: 22, color: C.green } },
+      { text: q, options: { fontSize: 18, color: C.ink } },
+    ], { x: M, y, w: CW, h: 0.8, fontFace: BF, valign: "middle", margin: 16 });
+  });
+  s.addNotes("Discussion slide. Open questions with no right answer yet; the point is awareness of the debate. Suggested format: pick two questions, give pairs three minutes, then take a few answers. Useful prompts: for question 1, ask where they would draw the line between code they read and code they only test. For question 2, connect to the human checkpoints in the graph engineering slide and the approval gates in the workflows they ran. For question 3, mention the worry that juniors lose the practice that builds judgement, and the counter-view that agents are also patient tutors. For question 4, candidates people raise include judgement, taste, product sense, domain knowledge, specification and verification. For question 5, refer back to the camps slide.");
+}
+
+
 
 // Closing quote
 {
